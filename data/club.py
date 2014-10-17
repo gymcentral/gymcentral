@@ -1,5 +1,6 @@
 
 __author__ = 'fab,stefano.tranquillini'
+
 from google.appengine.ext import ndb
 
 
@@ -14,7 +15,7 @@ class Club(ndb.Model):
     name = ndb.StringProperty(required=True)
     description = ndb.StringProperty()
     url = ndb.StringProperty(required=True)
-
+    is_deleted = ndb.BooleanProperty(default=False)
     #User must be a model that we should create
     owners = ndb.KeyProperty(kind="User", repeated=True)
     #owners = ndb.JsonProperty(required=True, indexed=True) # or repeated string?
@@ -25,10 +26,19 @@ class Club(ndb.Model):
     # training_type ndb.KeyProperty(kind="Training_type", repeated=True)
     # if it's just a string i'll use stringPropery and repeated, as here https://cloud.google.com/appengine/docs/python/ndb/properties#repeated
     training_type = ndb.JsonProperty(required=True, indexed=True) # stability, balance,...
-
     is_open = ndb.BooleanProperty(default=True)
-
-
     tags = ndb.JsonProperty(required=True, indexed=True)
-    
     members = ndb.KeyProperty(kind="User", repeated=True)
+
+    def safe_delete(self):
+        self.is_deleted = True;
+        self.put()
+
+
+    @staticmethod
+    def get_by_email(email):
+        return Club.query(Club.email==email).get()
+
+
+
+
