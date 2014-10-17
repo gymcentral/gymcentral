@@ -28,33 +28,27 @@ class NDBTestCase(unittest.TestCase):
 
     def testClub(self):
         # this id is a manually assigned
-        club = m_Club(id="1",name="test", email="test@test.com", description="desc", url="example.com",
-                               owners=[self.owner.key], training_type=["balance","stability"], tags=["test", "trento"])
+        club = m_Club(id="1", name="test", email="test@test.com", description="desc", url="example.com",
+                      owners=[self.owner.key], training_type=["balance", "stability"], tags=["test", "trento"])
         club.put()
-        logging.debug("just created club is %s",club)
+        logging.debug("just created club is %s", club)
         clubs = m_Club.query().fetch()
-        self.assertEqual(1,len(clubs),"clubs are not 1")
+        self.assertEqual(1, len(clubs), "clubs are not 1")
         clubs = m_Club.get_by_email("test@test.com").fetch()
-        self.assertEqual(1,len(clubs),"clubs are not 1")
+        self.assertEqual(1, len(clubs), "clubs are not 1")
         clubs = m_Club.filter_by_language("en").fetch()
-        self.assertEqual(1,len(clubs),"clubs are not 1")
-        clubs = m_Club.filter_by_training(["stability","balance"]).fetch()
+        self.assertEqual(1, len(clubs), "clubs are not 1")
+        clubs = m_Club.filter_by_training(["stability", "balance"]).fetch()
         logging.debug("by training %s", ( [x.name for x in clubs]))
-        self.assertEqual(1,len(clubs),"clubs are not 1")
-#         add a member
+        self.assertEqual(1, len(clubs), "clubs are not 1")
+        # add a member
         member = m_User(username="member")
         member.put()
-        logging.debug("just created user %s",member)
-        self.assertEqual(0,len(club.members),"members is not empty")
+        logging.debug("just created user %s", member)
+        self.assertEqual(0, len(club.members), "members is not empty")
         club.add_member(member)
-        self.assertEqual(1,len(club.members),"members is not 1")
-
-
-
-
-
+        self.assertEqual(1, len(club.members), "members is not 1")
 
 
 if __name__ == '__main__':
-
     unittest.main()
