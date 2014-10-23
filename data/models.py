@@ -74,7 +74,7 @@ class Club(ndb.Model):
         # return User.query(self.key.IN(User.member_of))
         # this works but it's already done on the top
         # return User.gql("WHERE member_of IN :", [cls.key])
-    
+
     def add_member(self, user):
         if (self.key not in user.member_of):
             user.member_of.append(self.key)
