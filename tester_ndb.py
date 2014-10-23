@@ -46,16 +46,22 @@ class NDBTestCase(unittest.TestCase):
         # add a member
         member = m_User(username="member")
         member.put()
-
-        logging.debug("just created user %s", member)
-        logging.debug(club.members.fetch())
         self.assertEqual(0, len(club.members.fetch()), "members is not empty")
         club.add_member(member)
         self.assertEqual(1, len(club.members.fetch()), "members is not 1")
-        member = m_User(username="member2")
+        club = m_Club(id="1", name="test", email="test@test.com", description="desc", url="example.com",
+                      owners=[self.owner.key], training_type=["balance", "stability"], tags=["test", "trento"])
+        club.put()
+        club.add_member(member)
+        member = m_User(username="member")
         member.put()
         club.add_member(member)
+        self.assertEqual(2, len(club.members.fetch()), "members is not 2")
+        club.rm_member(member)
+        self.assertEqual(1, len(club.members.fetch()), "members is not 1")
+        club.safe_delete()
         logging.debug(club.members.fetch())
+        club.key.delete()
         # logging.debug("computed %s",club.members_c)
 
 
