@@ -1,11 +1,9 @@
 __author__ = 'stefano'
 
 import logging
-
-
 import unittest
-from google.appengine.api import memcache
-from google.appengine.ext import db
+
+from google.appengine.ext import ndb
 from google.appengine.ext import testbed
 
 from data.models import User as m_User, Club as m_Club
@@ -23,6 +21,7 @@ class NDBTestCase(unittest.TestCase):
         self.testbed.init_memcache_stub()
         self.owner = m_User(username="owner")
         self.owner.put()
+
 
 
     def tearDown(self):
@@ -47,15 +46,17 @@ class NDBTestCase(unittest.TestCase):
         # add a member
         member = m_User(username="member")
         member.put()
+
         logging.debug("just created user %s", member)
-        logging.debug(club.members().fetch())
-        self.assertEqual(0, len(club.members().fetch()), "members is not empty")
+        logging.debug(club.members.fetch())
+        self.assertEqual(0, len(club.members.fetch()), "members is not empty")
         club.add_member(member)
-        self.assertEqual(1, len(club.members().fetch()), "members is not 1")
+        self.assertEqual(1, len(club.members.fetch()), "members is not 1")
         member = m_User(username="member2")
         member.put()
         club.add_member(member)
-        logging.debug(club.members().fetch())
+        logging.debug(club.members.fetch())
+        # logging.debug("computed %s",club.members_c)
 
 
 if __name__ == '__main__':
