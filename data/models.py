@@ -11,9 +11,14 @@ class User(ndb.Model):
     id = ndb.IntegerProperty()
     username = ndb.StringProperty(required=True)
 
+    # http://stackoverflow.com/questions/13565189/many-to-many-relationships-in-google-app-engine-datastore-ndb
+    # there's a limit of 5000 (apparently), so the viceversa will not work
+    member_of = ndb.KeyProperty(kind="Club", repeated=True)
+
     #if we want an id in club we can use this approach as well..
     def _post_put_hook(self, future):
         self.id= self.key.id()
+
 
 class Club(ndb.Model):
     #are we sure of this?
@@ -35,7 +40,7 @@ class Club(ndb.Model):
     is_open = ndb.BooleanProperty(default=True)
     # is it more than a single
     tags = ndb.JsonProperty(repeated=True)
-    members = ndb.KeyProperty(kind="User", repeated=True)
+
 
     def safe_delete(self):
         self.is_deleted = True;
@@ -62,11 +67,20 @@ class Club(ndb.Model):
         #  this is an and
         return cls.query(cls.training_type.IN(training))
 
-    def add_member(self,member):
-        self.members.append(member.key)
 
-    def remove_member(self,member):
-        self.members.remove(member.key)
+    def members(self):
+        return User.query(User.member_of.IN([self.key]))
+        # return User.gql("WHERE member_of IN :1", [cls.key])
+
+    def add_member(self,user):
+        if (self.key not in user.member_of):
+            user.member_of.append(self.key)
+            user.put()
+
+    def rm_member(self,user):
+        if (self.key  in user.member_of):
+            user.member_of.remove(self.key)
+            user.put()
 
 
 

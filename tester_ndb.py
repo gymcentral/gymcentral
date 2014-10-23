@@ -1,8 +1,11 @@
+__author__ = 'stefano'
+
 import logging
 
-__author__ = 'stefano'
-import unittest
 
+import unittest
+from google.appengine.api import memcache
+from google.appengine.ext import db
 from google.appengine.ext import testbed
 
 from data.models import User as m_User, Club as m_Club
@@ -45,9 +48,14 @@ class NDBTestCase(unittest.TestCase):
         member = m_User(username="member")
         member.put()
         logging.debug("just created user %s", member)
-        self.assertEqual(0, len(club.members), "members is not empty")
+        logging.debug(club.members().fetch())
+        self.assertEqual(0, len(club.members().fetch()), "members is not empty")
         club.add_member(member)
-        self.assertEqual(1, len(club.members), "members is not 1")
+        self.assertEqual(1, len(club.members().fetch()), "members is not 1")
+        member = m_User(username="member2")
+        member.put()
+        club.add_member(member)
+        logging.debug(club.members().fetch())
 
 
 if __name__ == '__main__':
