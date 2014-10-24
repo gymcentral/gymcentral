@@ -8,13 +8,6 @@ from google.appengine.ext import ndb
 
  all the methods return a Query. We then should use fetch_page and some method
  to interpretate the data when we are going to use it.
-
- will be better to store members as list of users and then member_of becomes a query.
- in this way we can filter for is_open and is_deleted when checking membership
-
- as it is the member_of shows also clubs that are deleted or closed.
-
- there's a limit of 5000 in the relation, thus each club can have at maximum 5000 members (to check if this limit still exsists)
 '''
 
 
@@ -24,15 +17,15 @@ class User(ndb.Model):
     id = ndb.IntegerProperty()
     username = ndb.StringProperty(required=True)
 
-    # http://stackoverflow.com/questions/13565189/many-to-many-relationships-in-google-app-engine-datastore-ndb
-    # there's a limit of 5000 (apparently), so the viceversa will not work
-    # user ndb.get_multi to get the clubs. still loads deleted and closed clubs
-    member_of = ndb.KeyProperty(kind="Club", repeated=True)
-
     # if we want an id in club we can use this approach as well..
     def _post_put_hook(self, future):
         self.id = self.key.id()
 
+    @property
+    def member_of(self):
+        return Club.query(ndb.AND(Club.is_open == True,
+                                  Club.is_deleted == False,
+                                  Club.members.IN([self.key])))
 
 
 class Club(ndb.Model):
@@ -50,23 +43,15 @@ class Club(ndb.Model):
     language = ndb.StringProperty(choices=set(["it", "en"]), default="en", required=True)
     # json or stirng are the same
     training_type = ndb.StringProperty(repeated=True, indexed=True)
-    # FIXME: i'm not able to do the query with JSONproperty (see method filter_by_training)
-    # training_type = ndb.JsonProperty(required=True, indexed=True) # stability, balance,...
     is_open = ndb.BooleanProperty(default=True)
     # is it more than a single
     tags = ndb.JsonProperty(repeated=True)
+    members = ndb.KeyProperty(kind="User", repeated=True)
 
     def safe_delete(self):
         self.is_deleted = True
         self.is_open = False
-        # TODO: remove membership here? otherwise User.member_of still contains the link
         self.put()
-
-    # @classmethod
-    # def _pre_delete_hook(cls, key):
-    #     # TODO: what we do with people that paid the subscription here?
-    #     logging.info("club %s is going to be removed", cls.name)
-
 
     @classmethod
     def get_by_email(cls, email):
@@ -83,23 +68,19 @@ class Club(ndb.Model):
         return cls.query(cls.training_type.IN(training))
 
     @property
-    def members(self):
-        return User.query(User.member_of.IN([self.key]))
-        # this should make more senese but does not work
-        # return User.query(self.key.IN(User.member_of))
-        # this works but it's already done on the top
-        # return User.gql("WHERE member_of IN :", [cls.key])
+    def membersUser(self):
+        return ndb.get_multi(self.members)
 
-    def add_member(self, user):
-        if (self.key not in user.member_of):
-            user.member_of.append(self.key)
-            user.put()
+    def add_member(self,member):
+        if (member.key not in self.members):
+            self.members.append(member.key)
+            self.put()
 
-    def rm_member(self, user):
-        if (self.key in user.member_of):
-            user.member_of.remove(self.key)
-            user.put()
 
+    def rm_member(self,member):
+        if (member.key  in self.members):
+            self.members.remove(member.key)
+            self.put()
 
 
 
