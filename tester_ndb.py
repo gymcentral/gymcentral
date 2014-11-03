@@ -6,7 +6,7 @@ import unittest
 
 from google.appengine.ext import testbed
 
-from data.models import User as m_User, Club as m_Club
+from models import User as m_User, Club as m_Club
 
 
 class NDBTestCase(unittest.TestCase):

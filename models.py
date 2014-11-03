@@ -1,26 +1,11 @@
+from gymcentral.gc_models import GCModel, GCUser
+
 __author__ = 'fab,stefano.tranquillini'
 
 from google.appengine.ext import ndb
 
-
-'''
- NOTE
-
- all the methods return a Query. We then should use fetch_page and some method
- to interpretate the data when we are going to use it.
-'''
-
-
-class User(ndb.Model):
-    # dummy
-    #
-    id = ndb.IntegerProperty()
-    username = ndb.StringProperty(required=True)
-
-    # if we want an id in club we can use this approach as well..
-    def _post_put_hook(self, future):
-        self.id = self.key.id()
-
+class User(GCUser):
+    # this is an expando class
     @property
     def member_of(self):
         return Club.query(ndb.AND(Club.is_open == True,
@@ -28,10 +13,9 @@ class User(ndb.Model):
                                   Club.members.IN([self.key])))
 
 
-class Club(ndb.Model):
-    # are we sure of this?
-    # what about a compouted property https://cloud.google.com/appengine/docs/python/ndb/properties#computed with key.id()?
-    id = ndb.StringProperty(required=True)
+class Club(GCModel):
+    #GCModel has id and safe_key
+
     created = ndb.DateTimeProperty(auto_now_add=True)
     updated = ndb.DateTimeProperty(auto_now=True)
     name = ndb.StringProperty(required=True)
@@ -47,6 +31,9 @@ class Club(ndb.Model):
     # is it more than a single
     tags = ndb.JsonProperty(repeated=True)
     members = ndb.KeyProperty(kind="User", repeated=True)
+
+    def is_valid(self):
+        return True
 
     def safe_delete(self):
         self.is_deleted = True
