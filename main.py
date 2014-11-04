@@ -55,7 +55,7 @@ def club_list(req):
     items = []
     for club in clubs:
         j_club = json_serializer(club)
-        j_club['member_count'] = len(club.member_keys)
+        j_club['member_count'] = len(club.members)
         j_club['course_count'] = len(club.course_keys)
         j_club['owners'] = sanitize_list(json_serializer(club.owners), ['name', 'picture'])
         items.append(j_club)
@@ -81,8 +81,8 @@ def club_details(req, id):
     club = m_Club.get_by_id(long(id))
     if club:
         j_club = json_serializer(club)
-        j_club['member_count'] = len(club.member_keys)
-        j_club['course_count'] = len(club.course_keys)
+        j_club['members_count'] = len(club.member_keys)
+        j_club['courses_count'] = len(club.course_keys)
         j_club['owners'] = sanitize_list(json_serializer(club.owners), ['name', 'picture'])
         # in case we need to populate it.
         # j_club['members'] = sanitize_list(club.members, allowed=['fname', 'sname', 'avatar'])
@@ -103,15 +103,58 @@ def club_membership(req, id):
     """
     club = m_Club.get_by_id(long(id))
     # in this case it's a page number
-    in_cursor = req.get('cursor')
-
+    in_cursor = int(req.get('cursor', 0))
+    ret = {}
     if club:
         members = club.members
-        if in_cursor:
+        start = (in_cursor - 1) * cfg.PAGE_SIZE
+        end = in_cursor * cfg.PAGE_SIZE
+        # crop the list
+        res_list = members[start:end]
+        for member in members:
+            member['type'] = club.membership_type(member)
+        # create the object
+        # it's probably another page
+        if len(res_list) == cfg.PAGE_SIZE:
+            ret['next_page'] = str(in_cursor + 1)
+            # add next page as nextPageToken, not the best but the easy way
+        ret['items'] = sanitize_list(res_list, allowed=['fname', 'sname', 'avatar'])
+        ret['total'] = len(members)
+        return ret
+    else:
+        raise NotFoundException()
 
-        if len(members) > cfg.PAGE_SIZE:
 
-        j_members = sanitize_list(, allowed = ['fname', 'sname', 'avatar'])
-        return members
+@app.route('/clubs/<id>/courses', methods=('GET',))
+def club_courses(req, id):
+    """
+    gets the list of courses for a club
+    :param req:
+    :param id:
+    :return:
+    """
+    club = m_Club.get_by_id(long(id))
+    # in this case it's a page number
+    in_cursor = int(req.get('cursor', 0))
+    ret = {}
+    if club:
+        courses = club.courses
+        start = (in_cursor - 1) * cfg.PAGE_SIZE
+        end = in_cursor * cfg.PAGE_SIZE
+        # crop the list
+        res_list = courses[start:end]
+        for course in courses:
+            course['members_count'] = len(course.members)
+            course['trainers'] = course.trainers
+        # create the object
+        # it's probably another page
+        if len(res_list) == cfg.PAGE_SIZE:
+            ret['next_page'] = str(in_cursor + 1)
+            # add next page as nextPageToken, not the best but the easy way
+        ret['items'] = sanitize_list(res_list,
+                                     allowed=['name', 'description', 'type', 'start_date', 'end_date', 'duration',
+                                              'trainers', 'members_count'])
+        ret['total'] = len(courses)
+        return ret
     else:
         raise NotFoundException()

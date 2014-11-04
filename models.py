@@ -17,6 +17,36 @@ class User(GCUser):
 class Course(GCModel):
     name = ndb.StringProperty(required=True)
     description = ndb.StringProperty(required=True)
+    instructor_keys = ndb.KeyProperty(kind="User", repeated=True)
+    member_keys = ndb.KeyProperty(kind="User", repeated=True)
+
+    @property
+    def instructors(self):
+        return ndb.get_multi(self.instructor_keys)
+
+    @property
+    def members(self):
+        return filter(lambda x: x.is_active, ndb.get_multi(self.member_keys))
+
+    def add_instructor(self, instructor):
+        if instructor.key not in self.instructor_keys:
+            self.instructor_keys.append(instructor.key)
+            self.put()
+
+    def rm_instructor(self, instructor):
+        if instructor.key in self.instructor_keys:
+            self.instructor_keys.remove(instructor.key)
+            self.put()
+
+    def add_member(self, member):
+        if member.key not in self.member_keys:
+            self.member_keys.append(member.key)
+            self.put()
+
+    def rm_member(self, member):
+        if member.key in self.member_keys:
+            self.member_keys.remove(member.key)
+            self.put()
 
 
 class Club(GCModel):
@@ -30,13 +60,10 @@ class Club(GCModel):
     url = ndb.StringProperty(required=True)
     is_deleted = ndb.BooleanProperty(default=False)
     language = ndb.StringProperty(choices=set(["it", "en"]), default="en", required=True)
-    # json or stirng are the same
     training_type = ndb.StringProperty(repeated=True, indexed=True)
     is_open = ndb.BooleanProperty(default=True)
-    # is it more than a single
-    tags = ndb.JsonProperty(repeated=True)
+    tags = ndb.StringProperty(repeated=True)
     owners_keys = ndb.KeyProperty(kind="User", repeated=True)
-    member_keys = ndb.KeyProperty(kind="User", repeated=True)
     course_keys = ndb.KeyProperty(kind="Course", repeated=True)
 
     def is_valid(self):
@@ -52,9 +79,9 @@ class Club(GCModel):
         return cls.query(cls.email == email)
 
     @classmethod
-    def filter_by_language(cls, langugage):
+    def filter_by_language(cls, language):
         # this is an and
-        return cls.query().filter(cls.language == langugage)
+        return cls.query().filter(cls.language == language)
 
     @classmethod
     def filter_by_training(cls, training):
@@ -63,7 +90,18 @@ class Club(GCModel):
 
     @property
     def members(self):
-        return filter(lambda x: x.is_active, ndb.get_multi(self.member_keys))
+        # TODO: is this correct? efficient?
+        l_members = []
+        for courses in self.courses:
+            l_members = l_members + courses.members
+        return l_members
+
+    @property
+    def trainers(self):
+        l_trainers = []
+        for courses in self.courses:
+            l_trainers = l_trainers + courses.trainers
+        return l_trainers
 
     @property
     def owners(self):
@@ -71,18 +109,7 @@ class Club(GCModel):
 
     @property
     def courses(self):
-        return filter(lambda x: x.is_active, ndb.get_multi(self.member_keys))
-
-
-    def add_member(self, member):
-        if member.key not in self.member_keys:
-            self.member_keys.append(member.key)
-            self.put()
-
-    def rm_member(self, member):
-        if member.key in self.member_keys:
-            self.member_keys.remove(member.key)
-            self.put()
+        return filter(lambda x: x.is_active, ndb.get_multi(self.course_keys))
 
     def add_owner(self, owner):
         if owner.key not in self.owners_keys:
@@ -104,5 +131,13 @@ class Club(GCModel):
             self.course_keys.remove(course.key)
             self.put()
 
-
+    def membership_type(self, user):
+        if user.key in self.owners_keys:
+            return "OWNER"
+        elif user in self.members:
+            return "MEMBER"
+        elif user in self.trainers:
+            return "TRAINER"
+        else:
+            raise Exception("The user %s is not in the club %s" % (user.id, self.id))
 
