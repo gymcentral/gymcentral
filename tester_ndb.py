@@ -1,4 +1,3 @@
-
 __author__ = 'stefano'
 
 import logging
@@ -29,10 +28,9 @@ class NDBTestCase(unittest.TestCase):
 
     def testClub(self):
         # this id is a manually assigned
-        club = m_Club(id="1", name="test", email="test@test.com", description="desc", url="example.com",
+        club = m_Club(name="test", email="test@test.com", description="desc", url="example.com",
                       owners=[self.owner.key], training_type=["balance", "stability"], tags=["test", "trento"])
         club.put()
-        logging.debug("just created club is %s", club)
         clubs = m_Club.query().fetch()
         self.assertEqual(1, len(clubs), "Error in query all club")
         clubs = m_Club.get_by_email("test@test.com")
@@ -40,25 +38,25 @@ class NDBTestCase(unittest.TestCase):
         clubs = m_Club.filter_by_language("en")
         self.assertEqual(1, len(clubs.fetch()), "Error in query for language.")
         clubs = m_Club.filter_by_training(["stability", "balance"])
-        logging.debug("by training %s", ( [x.name for x in clubs]))
         self.assertEqual(1, len(clubs.fetch()), "Error in query for training")
         # add a member
-        member = m_User(username="member")
-        member.put()
+        created, member = m_User.create_user("own:" + "member", username="member", unique_properties=['username'])
         self.assertEqual(0, len(club.members), "Error in the members, there should be none")
         club.add_member(member)
+
         self.assertEqual(1, len(club.members), "Error in the members, there should be only one")
-        club2 = m_Club(id="1", name="test", email="test@test.com", description="desc", url="example.com",
+        club2 = m_Club(name="test", email="test@test.com", description="desc", url="example.com",
                        owners=[self.owner.key], training_type=["balance", "stability"], tags=["test", "trento"])
         club2.put()
         club2.add_member(member)
-        member2 = m_User(username="member")
-        member2.put()
-        club.add_member(member2)
-        member.member_of.fetch_page(10, )
-        self.assertEqual(2, len(club.members), "Error in the members, there should be two users")
+
         self.assertEqual(2, len(member.member_of.fetch()),
                          "Error in the memebrship of the user, he should be in two clubs")
+
+        created, member2 = m_User.create_user("own:" + "member2", username="member2", unique_properties=['username'])
+        club.add_member(member2)
+        self.assertEqual(2, len(club.members), "Error in the members, there should be two users")
+
         club.is_open = False
         club.put()
         self.assertEqual(1, len(member.member_of.fetch()),

@@ -4,6 +4,7 @@ __author__ = 'fab,stefano.tranquillini'
 
 from google.appengine.ext import ndb
 
+
 class User(GCUser):
     # this is an expando class
     @property
@@ -13,8 +14,13 @@ class User(GCUser):
                                   Club.members.IN([self.key])))
 
 
+class Course(GCModel):
+    name = ndb.StringProperty(required=True)
+    description = ndb.StringProperty(required=True)
+
+
 class Club(GCModel):
-    #GCModel has id and safe_key
+    # GCModel has id and safe_key
 
     created = ndb.DateTimeProperty(auto_now_add=True)
     updated = ndb.DateTimeProperty(auto_now=True)
@@ -23,14 +29,15 @@ class Club(GCModel):
     description = ndb.StringProperty()
     url = ndb.StringProperty(required=True)
     is_deleted = ndb.BooleanProperty(default=False)
-    owners = ndb.KeyProperty(kind="User", repeated=True)
     language = ndb.StringProperty(choices=set(["it", "en"]), default="en", required=True)
     # json or stirng are the same
     training_type = ndb.StringProperty(repeated=True, indexed=True)
     is_open = ndb.BooleanProperty(default=True)
     # is it more than a single
     tags = ndb.JsonProperty(repeated=True)
-    members = ndb.KeyProperty(kind="User", repeated=True)
+    owners_keys = ndb.KeyProperty(kind="User", repeated=True)
+    member_keys = ndb.KeyProperty(kind="User", repeated=True)
+    course_keys = ndb.KeyProperty(kind="Course", repeated=True)
 
     def is_valid(self):
         return True
@@ -46,29 +53,56 @@ class Club(GCModel):
 
     @classmethod
     def filter_by_language(cls, langugage):
-        #  this is an and
+        # this is an and
         return cls.query().filter(cls.language == langugage)
 
     @classmethod
     def filter_by_training(cls, training):
-        #  this is an and
+        # this is an and
         return cls.query(cls.training_type.IN(training))
 
     @property
-    def membersUser(self):
-        return ndb.get_multi(self.members)
+    def members(self):
+        return filter(lambda x: x.is_active, ndb.get_multi(self.member_keys))
 
-    def add_member(self,member):
-        if (member.key not in self.members):
-            self.members.append(member.key)
+    @property
+    def owners(self):
+        return ndb.get_multi(self.owners_keys)
+
+    @property
+    def courses(self):
+        return filter(lambda x: x.is_active, ndb.get_multi(self.member_keys))
+
+
+    def add_member(self, member):
+        if member.key not in self.member_keys:
+            self.member_keys.append(member.key)
             self.put()
 
-
-    def rm_member(self,member):
-        if (member.key  in self.members):
-            self.members.remove(member.key)
+    def rm_member(self, member):
+        if member.key in self.member_keys:
+            self.member_keys.remove(member.key)
             self.put()
 
+    def add_owner(self, owner):
+        if owner.key not in self.owners_keys:
+            self.owner_keys.append(owner.key)
+            self.put()
+
+    def rm_owner(self, owner):
+        if owner.key in self.owners_keys:
+            self.owner_keys.remove(owner.key)
+            self.put()
+
+    def add_course(self, course):
+        if course.key not in self.courses_keys:
+            self.course_keys.append(course.key)
+            self.put()
+
+    def rm_course(self, course):
+        if course.key in self.courses_keys:
+            self.course_keys.remove(course.key)
+            self.put()
 
 
 
