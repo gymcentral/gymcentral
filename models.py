@@ -7,46 +7,61 @@ from google.appengine.ext import ndb
 
 class User(GCUser):
     # this is an expando class
-    @property
-    def member_of(self):
-        return Club.query(ndb.AND(Club.is_open == True,
-                                  Club.is_deleted == False,
-                                  Club.members.IN([self.key])))
+    def member_of(self, **kwargs):
+        return self.get(Club.query(ndb.AND(Club.is_open == True,
+                                           Club.is_deleted == False,
+                                           Club.members_keys.IN([self.key]))), kwargs)
+
+    def trainer_of(self, **kwargs):
+        return self.get(Club.query(ndb.AND(Club.is_open == True,
+                                           Club.is_deleted == False,
+                                           Club.trainers_keys.IN([self.key]))), kwargs)
 
 
 class Course(GCModel):
+    # TODO write test case for this. should be already covered by methods below
     name = ndb.StringProperty(required=True)
     description = ndb.StringProperty(required=True)
-    instructor_keys = ndb.KeyProperty(kind="User", repeated=True)
-    member_keys = ndb.KeyProperty(kind="User", repeated=True)
+    trainers_keys = ndb.KeyProperty(kind="User", repeated=True)
+    members_keys = ndb.KeyProperty(kind="User", repeated=True)
 
-    @property
-    def instructors(self):
-        return ndb.get_multi(self.instructor_keys)
+    def is_valid(self):
+        # this has to be implemented, used by the put
+        return True
 
-    @property
-    def members(self):
-        return filter(lambda x: x.is_active, ndb.get_multi(self.member_keys))
+    def trainers(self):
+        return ndb.get_multi(self.trainers_keys)
 
-    def add_instructor(self, instructor):
-        if instructor.key not in self.instructor_keys:
-            self.instructor_keys.append(instructor.key)
+    def members(self, **kwargs):
+        return self.get(self.members_keys, kwargs)
+
+    def save(self, **args):
+        # check question on the Club
+        self.populate(**args)
+        self.put()
+
+    #NOTE: we do not update the club here, correct?
+    def add_trainer(self, trainer):
+        if trainer.key not in self.trainers_keys:
+            self.trainers_keys.append(trainer.key)
             self.put()
 
-    def rm_instructor(self, instructor):
-        if instructor.key in self.instructor_keys:
-            self.instructor_keys.remove(instructor.key)
+    def rm_trainer(self, trainer):
+        if trainer.key in self.trainers_keys:
+            self.trainers_keys.remove(trainer.key)
             self.put()
 
     def add_member(self, member):
-        if member.key not in self.member_keys:
-            self.member_keys.append(member.key)
+        if member.key not in self.members_keys:
+            self.members_keys.append(member.key)
             self.put()
 
     def rm_member(self, member):
-        if member.key in self.member_keys:
-            self.member_keys.remove(member.key)
+        if member.key in self.members_keys:
+            self.members_keys.remove(member.key)
             self.put()
+
+
 
 
 class Club(GCModel):
@@ -64,9 +79,12 @@ class Club(GCModel):
     is_open = ndb.BooleanProperty(default=True)
     tags = ndb.StringProperty(repeated=True)
     owners_keys = ndb.KeyProperty(kind="User", repeated=True)
-    course_keys = ndb.KeyProperty(kind="Course", repeated=True)
+    courses_keys = ndb.KeyProperty(kind="Course", repeated=True)
+    trainers_keys = ndb.KeyProperty(kind="User", repeated=True)
+    members_keys = ndb.KeyProperty(kind="User", repeated=True)
 
     def is_valid(self):
+        # this has to be implemented, used by the put
         return True
 
     def safe_delete(self):
@@ -74,70 +92,103 @@ class Club(GCModel):
         self.is_open = False
         self.put()
 
-    @classmethod
-    def get_by_email(cls, email):
-        return cls.query(cls.email == email)
+    def save(self, **args):
+        # FIXME: this should go here or where?
+        # to add more stuff one should use the _pre_put or _post_put hooks no?
+        # not sure what goes here.
+        # at somepoint this calls put, that calls is_valid. check implementation of put()
+        self.populate(**args)
+        self.put()
 
     @classmethod
-    def filter_by_language(cls, language):
+    def total_self(cls):
+        # you can use _total to count everything.
+        return cls.total(cls.query())
+
+    def trainers(self, **kwargs):
+        # for list don't use properties, but instead use function, and pass all the kwargs.
+        # check the get function to see what it accepts.
+        # e.g. club.trainers() get all trainers
+        # club.trainers(10) get 10 trainers
+        # club.trainers(paginated=True) get paginated results,
+        # for paginated: can also specify size (of the page)and cursor (starting point)
+        # NB: cursor can be the one given by NDB if it's a query, or the page number if it's a list.
+        # club.trainers(paginated=True,size=5,cursor=..)
+        return self.get(self.trainers_keys, kwargs)
+
+    def members(self, **kwargs):
+        return self.get(self.members_keys, kwargs)
+
+    def owners(self, **kwargs):
+        return self.get(self.owners_keys, kwargs)
+
+    def courses(self, **kwargs):
+        return self.get(self.courses_keys, kwargs)
+
+    @classmethod
+    def get_by_email(cls, email, **kwargs):
+        return cls.get(cls.query(cls.email == email), kwargs)
+
+    @classmethod
+    def get_by_language(cls, language, **kwargs):
         # this is an and
-        return cls.query().filter(cls.language == language)
+        return cls.get(cls.query().filter(cls.language == language), kwargs)
 
     @classmethod
-    def filter_by_training(cls, training):
+    def get_by_training(cls, training, **kwargs):
         # this is an and
-        return cls.query(cls.training_type.IN(training))
+        return cls.get(cls.query(cls.training_type.IN(training)), kwargs)
 
-    @property
-    def members(self):
-        # TODO: is this correct? efficient?
-        l_members = []
-        for courses in self.courses:
-            l_members = l_members + courses.members
-        return l_members
+    def type_of_membership(self, user):
+        # NOTE: this function assumes that a user role can be only of one type
+        if user.key in self.owners_keys:
+            return "OWNER"
+        elif user.key in self.trainers_keys:
+            return "TRAINER"
+        elif user.key in self.members_keys:
+            return "MEMBER"
+        else:
+            raise Exception("The user %s is not in the club %s" % (user.id, self.id))
 
-    @property
-    def trainers(self):
-        l_trainers = []
-        for courses in self.courses:
-            l_trainers = l_trainers + courses.trainers
-        return l_trainers
+    # functions to add/remove from list
+    def add_trainer(self, trainer):
+        if trainer.key not in self.trainers_keys:
+            self.trainers_keys.append(trainer.key)
+            self.put()
 
-    @property
-    def owners(self):
-        return ndb.get_multi(self.owners_keys)
+    def rm_trainer(self, instructor):
+        if instructor.key in self.trainers_keys:
+            self.trainers_keys.remove(instructor.key)
+            self.put()
 
-    @property
-    def courses(self):
-        return filter(lambda x: x.is_active, ndb.get_multi(self.course_keys))
+    def add_member(self, member):
+        if member.key not in self.members_keys:
+            self.members_keys.append(member.key)
+            self.put()
+
+    def rm_member(self, member):
+        if member.key in self.members_keys:
+            self.members_keys.remove(member.key)
+            # TODO: remove the user from the courses?
+            self.put()
 
     def add_owner(self, owner):
         if owner.key not in self.owners_keys:
-            self.owner_keys.append(owner.key)
+            self.owners_keys.append(owner.key)
             self.put()
 
     def rm_owner(self, owner):
         if owner.key in self.owners_keys:
-            self.owner_keys.remove(owner.key)
+            self.owners_keys.remove(owner.key)
             self.put()
 
     def add_course(self, course):
         if course.key not in self.courses_keys:
-            self.course_keys.append(course.key)
+            self.courses_keys.append(course.key)
             self.put()
 
     def rm_course(self, course):
         if course.key in self.courses_keys:
-            self.course_keys.remove(course.key)
+            self.courses_keys.remove(course.key)
+            # TODO: notify all users?
             self.put()
-
-    def membership_type(self, user):
-        if user.key in self.owners_keys:
-            return "OWNER"
-        elif user in self.members:
-            return "MEMBER"
-        elif user in self.trainers:
-            return "TRAINER"
-        else:
-            raise Exception("The user %s is not in the club %s" % (user.id, self.id))
-
