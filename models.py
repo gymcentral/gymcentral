@@ -18,6 +18,8 @@ class User(GCUser):
                                            Club.trainers_keys.IN([self.key]))), kwargs)
 
 
+
+
 class Course(GCModel):
     # TODO write test case for this. should be already covered by methods below
     name = ndb.StringProperty(required=True)
