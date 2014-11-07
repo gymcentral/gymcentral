@@ -11,17 +11,20 @@ class User(GCUser):
     @property
     def member_of(self):
         return ClubMembership.query(ndb.AND(ClubMembership.member == self.key,
-                                            ClubMembership.membership_type == "MEMBER"))
+                                            ClubMembership.membership_type == "MEMBER",
+                                            ClubMembership.is_active == True))
 
     @property
     def trainer_of(self):
         return ClubMembership.query(ndb.AND(ClubMembership.member == self.key,
-                                            ClubMembership.membership_type == "TRAINER"))
+                                            ClubMembership.membership_type == "TRAINER",
+                                            ClubMembership.is_active == True))
 
     @property
     def owner_of(self):
         return ClubMembership.query(ndb.AND(ClubMembership.member == self.key,
-                                            ClubMembership.membership_type == "OWNER"))
+                                            ClubMembership.membership_type == "OWNER",
+                                            ClubMembership.is_active == True))
 
     def membership_type(self, club):
         membership = ndb.Key(ClubMembership, ClubMembership.build_id(self.key, club.key)).get()
@@ -104,7 +107,7 @@ class Club(GCModel):
                                             ClubMembership.is_active == True))
 
 
-    #these methods are not used anymore, there's the query()
+    # these methods are not used anymore, there's the query()
     @classmethod
     def get_by_email(cls, email, **kwargs):
         return cls.get(cls.query(cls.email == email), kwargs)

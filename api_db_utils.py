@@ -152,6 +152,7 @@ class APIDB():
         :param count_only: if true, return the count
         :return: the list of objects, next_page token, if has next page, size; or the object in case it's one
         """
+        logging.debug("%s %s %s %s %s" % (o, size, paginated, cursor, count_only))
         if count_only:
             return o.count()
 
@@ -163,7 +164,7 @@ class APIDB():
                 return o.fetch()
             return o.fetch(size)
             # else:
-            #     logging.debug("Type %s %s", type(o), o)
+            # logging.debug("Type %s %s", type(o), o)
             #     raise Exception("Type not found %s %s" % (type(o), o))
         else:
             # in case the size is not specified, then it's -1 we use the value in the config
@@ -182,5 +183,5 @@ class APIDB():
                 token = token.urlsafe()
             return data, token, has_next, o.count()
             # else:
-            #     logging.debug("Type %s %s", type(o), o)
+            # logging.debug("Type %s %s", type(o), o)
             #     raise Exception("Type not found")
