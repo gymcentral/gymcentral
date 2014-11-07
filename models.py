@@ -1,4 +1,4 @@
-from gymcentral.gc_models import GCModel, GCUser
+from gymcentral.gc_models import GCUser, GCModel
 
 __author__ = 'fab,stefano.tranquillini'
 
