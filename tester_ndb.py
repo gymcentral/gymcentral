@@ -28,7 +28,7 @@ class NDBTestCase(unittest.TestCase):
         # test the club
         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
                                  training_type=["balance", "stability"], tags=["test", "trento"])
-        self.assertEqual(club, APIDB.get_club(club.key.id()), "Club with id not found")
+        self.assertEqual(club, APIDB.get_club_by_id(club.key.id()), "Club with id not found")
 
         # count_only=True does the same result as len(APIDB.get_clubs()). the count_only is more efficient
         self.assertEqual(1, APIDB.get_clubs(count_only=True), "Error in query all club")

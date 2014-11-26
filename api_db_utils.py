@@ -71,7 +71,7 @@ class APIDB():
             return cls.__get(cls.model_club.query(query), **kwargs)
 
     @classmethod
-    def get_club(cls, id_club):
+    def get_club_by_id(cls, id_club):
         return cls.model_club.get_by_id(long(id_club))
 
     @classmethod
@@ -85,6 +85,10 @@ class APIDB():
     @classmethod
     def get_club_owners(cls, club, **kwargs):
         return cls.__get(club.owners, **kwargs)
+
+    @classmethod
+    def get_club_courses(cls, club, **kwargs):
+        pass
 
     @classmethod
     def add_member_to_club(cls, user, club):
@@ -185,3 +189,4 @@ class APIDB():
             # else:
             # logging.debug("Type %s %s", type(o), o)
             #     raise Exception("Type not found")
+
