@@ -1,5 +1,3 @@
-import logging
-
 from api_db_utils import APIDB
 import cfg
 from gymcentral.app import WSGIApp
@@ -116,8 +114,6 @@ def club_membership(req, id):
     size = int(j_req['size'])
     ret = {}
     role = req.get('role', None)
-
-
     l_users = []
     # the code of each list is repeated, but like this it's:
     # - the easiset solution that i found so far
@@ -131,7 +127,7 @@ def club_membership(req, id):
             res_user['user'] = sanitize_json(j_user, allowed=["fname", "sname", "picture"])
             res_user['type'] = "OWNER"
             l_users.append(res_user)
-            global_total+=total
+            global_total += total
 
     if not role or role == "TRAINER":
         trainers, total = APIDB.get_club_trainers(club, paginated=True, page=page, size=size)
@@ -141,7 +137,7 @@ def club_membership(req, id):
             res_user['user'] = sanitize_json(j_user, allowed=["fname", "sname", "avatar"])
             res_user['type'] = "TRAINER"
             l_users.append(res_user)
-            global_total+=total
+            global_total += total
 
     if not role or role == "MEMBER":
         members, total = APIDB.get_club_members(club, paginated=True, page=page, size=size)
@@ -151,8 +147,33 @@ def club_membership(req, id):
             res_user['user'] = sanitize_json(j_user, allowed=["fname", "sname", "avatar"])
             res_user['type'] = "MEMBER"
             l_users.append(res_user)
-            global_total+=total
+            global_total += total
 
     ret['results'] = l_users
     ret['total'] = global_total
+    return ret
+
+
+@app.route('/clubs/<id>/courses', methods=('GET',))
+def club_courses(req, id):
+    # TODO: write test case
+    club = APIDB.get_club_by_id(id)
+    if not club:
+        raise NotFoundException()
+    j_req = json_from_paginated_request(req)
+    page = int(j_req['page'])
+    size = int(j_req['size'])
+    courses, total = APIDB.get_club_courses(club, paginated=True, page=page, size=size)
+    res_courses = []
+    for course in courses:
+        j_course = json_serializer(course)
+        j_course["trainers"] = sanitize_list(APIDB.get_course_trainers(course), allowed=["fname", "sname", "picture"])
+        j_course["subscriber_count"] = APIDB.get_course_subscribers(course, count_only=True)
+        j_course["session_count"] = -1  # APIDB.get_sessions(course, count_only=True)
+        res_course = sanitize_json(j_course, allowed=["id", "name", "description", "start_date", "end_date", "trainers",
+                                                      "subscriber_count", "session_count"])
+        res_courses.append(res_course)
+    ret = {}
+    ret['results'] = res_courses
+    ret['total'] = total
     return ret

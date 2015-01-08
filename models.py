@@ -35,20 +35,40 @@ class Course(GCModel):
     # TODO write test case for this. should be already covered by methods below
     name = ndb.StringProperty(required=True)
     description = ndb.StringProperty(required=True)
+    start_date = ndb.DateTimeProperty(auto_now_add=False)
+    end_date = ndb.DateTimeProperty(auto_now_add=False)
+    club = ndb.KeyProperty('Club', required=True)
 
+    @property
+    def __all_memberships(self):
+        return ClubMembership.query(ndb.AND(CourseSubscription.course == self.key,
+                                            CourseSubscription.is_active == True))
+    @property
+    def members(self):
+        return self.__all_memberships.filter(CourseSubscription.membership_type == "MEMBER")
+
+    @property
+    def trainers(self):
+        return self.__all_memberships.filter(CourseSubscription.membership_type == "TRAINER")
 
 class CourseSubscription(GCModel):
+    # probably is worth switching to this structure http://stackoverflow.com/a/27837999/1257185
     member = ndb.KeyProperty(kind='User', required=True)
     course = ndb.KeyProperty(kind='Course', required=True)
-    membership_type = ndb.StringProperty(choices=set(["MEMBER", "TRAINER", "OWNER", "ADMIN"]), default="MEMBER",
+    membership_type = ndb.StringProperty(choices=set(["MEMBER", "TRAINER"]), default="MEMBER",
                                          required=True)
+    is_active = ndb.BooleanProperty(default=True)
 
-    @staticmethod
-    def build_id(user_key, course_key):
-        return '%s|%s' % (user_key.id(), course_key.id())
+    @classmethod
+    def build_id(cls, user_key, course_key):
+        return '%s|%s' % (user_key.urlsafe(), course_key.urlsafe())
+    @classmethod
+    def get_by_id(cls, user, course_key):
+        return ndb.Key(cls, cls.build_id(user.key, course_key.key)).get()
 
 
 class ClubMembership(GCModel):
+    # probably is worth switching to this structure http://stackoverflow.com/a/27837999/1257185
     member = ndb.KeyProperty(kind='User', required=True)
     club = ndb.KeyProperty(kind='Club', required=True)
     is_active = ndb.BooleanProperty(default=True)

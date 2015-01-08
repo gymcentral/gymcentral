@@ -2,7 +2,6 @@ from google.appengine.ext import ndb
 
 import cfg
 import models
-import logging
 
 
 __author__ = 'stefano'
@@ -13,6 +12,7 @@ class APIDB():
     model_club = models.Club
     model_course = models.Course
     model_club_user = models.ClubMembership
+    model_course_user = models.CourseSubscription
 
 
     @classmethod
@@ -127,9 +127,8 @@ class APIDB():
     def rm_owner_from_club(cls, user, club):
         cls.rm_member_from_club(user, club)
 
-    # [END] CLUB and relationships
 
-    # [START] Membership
+
     @classmethod
     def get_type_of_membership(cls, user, club):
         # this function uses both ids
@@ -139,7 +138,56 @@ class APIDB():
         else:
             return None
 
-    # [END]Membership
+    # [END] club
+
+    # [START] Courses
+
+    @classmethod
+    def add_member_to_course(cls, user, course):
+        # Q: do we have to add it to the club as well, one person should not be able
+        # to subscribe to a course of a club he's not member of.
+        cls.model_course_user(id=cls.model_course_user.build_id(user.key, course.key),
+                              member=user.key, club=course.key, is_active=True).put()
+        # also add the trainer to the club, just in case
+        cls.add_member_to_club(user,course.club)
+
+    @classmethod
+    def rm_member_from_course(cls, user, course):
+        # remove makes it anactive. correct?
+        relation = ndb.Key(cls.model_course_user, cls.model_course_user.build_id(user.key, course.key)).get()
+        if relation:
+            relation.is_active = False
+            relation.put()
+
+    @classmethod
+    def add_trainer_to_course(cls, user, course):
+        cls.model_course_user(id=cls.model_course_user.build_id(user.key, course.key),
+                              member=user.key, course=course.key, is_active=True, membership_type="TRAINER").put()
+        cls.add_trainer_to_club(user,course.club)
+
+    @classmethod
+    def rm_trainer_from_course(cls, user, course):
+        cls.rm_member_from_course(user, course)
+
+    # @classmethod
+    # def add_owner_to_course(cls, user, course):
+    #     cls.model_course_user(id=cls.model_course_user.build_id(user.key, course.key),
+    #                           member=user.key, course=course.key, is_active=True, membership_type="OWNER").put()
+    #
+    # @classmethod
+    # def rm_owner_from_course(cls, user, course):
+    #     cls.rm_member_from_course(user, course)
+
+
+    @classmethod
+    def get_course_subscribers(cls, course, **kwargs):
+        return cls.__memberships_to_results(cls.__get(course.subscribers, **kwargs))
+
+    @classmethod
+    def get_course_trainers(cls, course, **kwargs):
+        return cls.__memberships_to_results(cls.__get(course.trainers, **kwargs))
+
+    # [END] Coursese
 
     @classmethod
     def __get(cls, o, size=-1, paginated=False, page=1, count_only=False, **kwargs):
@@ -178,7 +226,7 @@ class APIDB():
                 size = cfg.PAGE_SIZE
             # if we want some limit here
             # if size > 99:
-            #     size = 100
+            # size = 100
             # compute the offset, if not set it's 0.
             offset = (page - 1) * size
             data = o.fetch(size, offset=offset, **kwargs)
@@ -192,7 +240,7 @@ class APIDB():
         # it's count
         elif type(result) == int:
             return result
-        #if it's all the items
+        # if it's all the items
         elif type(result) == list:
             memberships = result
             total = 0
