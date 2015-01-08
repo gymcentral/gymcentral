@@ -1,3 +1,7 @@
+import json
+import webtest
+from main import app
+
 __author__ = 'stefano'
 
 import logging
@@ -10,7 +14,7 @@ from api_db_utils import APIDB
 
 class NDBTestCase(unittest.TestCase):
     def setUp(self):
-        logging.getLogger().setLevel(logging.DEBUG)
+        logging.getLogger().setLevel(logging.INFO)
         # First, create an instance of the Testbed class.
         self.testbed = testbed.Testbed()
         # Then activate the testbed, which prepares the service stubs for use.
@@ -18,6 +22,7 @@ class NDBTestCase(unittest.TestCase):
         # Next, declare which service stubs you want to use.
         self.testbed.init_datastore_v3_stub()
         self.testbed.init_memcache_stub()
+        # check http://webtest.pythonpaste.org/en/latest/index.html for this
 
 
     def tearDown(self):
@@ -41,26 +46,24 @@ class NDBTestCase(unittest.TestCase):
         self.assertEqual(1, APIDB.club_query(APIDB.model_club.training_type.IN(["stability"]), count_only=True),
                          "Error in query for training")
         # add a member
-        member = APIDB.create_user("own:" + "member", username="member", unique_properties=['username'])
+        member = APIDB.create_user("own:" + "member", username="member", fname="test", sname="test",  avatar="..", unique_properties=['username'])
         APIDB.add_member_to_club(member, club)
         # create another club
         club2 = APIDB.create_club(name="test2", email="test2@test.com", description="desc2", url="example2.com",
                                   training_type=["balance2", "stability2"], tags=["test2", "trento2"])
         # we test the pagianted, it's 4 elements: items, cursor, has-next, size
-        paginated_results = APIDB.get_clubs(paginated=True, size=1)
-        self.assertEqual(True, paginated_results[2])
         # calls the second page and returns the first element of the items, thus club2
-        self.assertEqual(club2, APIDB.get_clubs(paginated=True, size=1, cursor=paginated_results[1])[0][0])
+        self.assertEqual(club2, APIDB.get_clubs(paginated=True, size=1, page=2)[0][0])
         APIDB.add_member_to_club(member, club2)
         self.assertEqual(1, APIDB.get_club_members(club2, count_only=True),
                          "Error in the members, there should be only one")
 
-        member2 = APIDB.create_user("own:" + "member2", username="member2", unique_properties=['username'])
+        member2 = APIDB.create_user("own:" + "member2", username="member2", fname="member2", sname="member2", avatar="..", unique_properties=['username'])
         APIDB.add_member_to_club(member2, club)
         # total is the same as len
         self.assertEqual(2, APIDB.get_club_members(club, count_only=True),
                          "Error in the members, there should be two users")
-        # testing trainers, members and owners
+
         trainer = APIDB.create_user("own:" + "trainer", username="trainer", unique_properties=['username'])
         APIDB.add_trainer_to_club(trainer, club)
         self.assertEqual(1, len(APIDB.get_club_trainers(club)), "There's only a trainer")
@@ -75,31 +78,6 @@ class NDBTestCase(unittest.TestCase):
         APIDB.rm_owner_from_club(owner, club)
         self.assertEqual(0, len(APIDB.get_club_owners(club)), "There's no owner")
 
-        # TODO
-        # course = m_Course()
-        # course.save(name="test", description="test")
-        # club.add_course(course)
-        # self.assertEqual(1, len(club.courses()), "Error in the courses there should be one.")
-        # course.add_trainer(trainer)
-        # self.assertEqual(1, len(course.trainers()), "There's only a trainer")
-        # course.rm_trainer(trainer)
-        # self.assertEqual(0, len(course.trainers()), "There's no trainer")
-        # course.add_member(member)
-        # self.assertEqual(1, len(course.members()), "There's only a member")
-        # course.rm_member(member)
-        # self.assertEqual(0, len(course.members()), "There's no member")
-        # club.rm_course(course)
-        # self.assertEqual(0, len(club.courses()), "Error in the courses there should be none.")
-        # club.is_open = False
-        # club.put()
-        # self.assertEqual(1, len(member.member_of()),
-        # "Error in the membership of the user, he should be in one clubs. One club is closed.")
-        # club.rm_member(member)
-        # self.assertEqual(1, len(club.members()),
-        # "Error in the membership of the user, he should be in one clubs. User has been removed.")
-        # club2.safe_delete()
-        # self.assertEqual(1, len(club.members()),
-        # "Error in the membership of the user, he should be in no clubs. Club has just been deleted .")
 
 
         if __name__ == '__main__':

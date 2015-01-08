@@ -52,8 +52,9 @@ class ClubMembership(GCModel):
     member = ndb.KeyProperty(kind='User', required=True)
     club = ndb.KeyProperty(kind='Club', required=True)
     is_active = ndb.BooleanProperty(default=True)
-    membership_type = ndb.StringProperty(choices=set(["MEMBER", "TRAINER", "OWNER", "ADMIN"]), default="MEMBER",
+    membership_type = ndb.StringProperty(choices=set(["MEMBER", "TRAINER", "OWNER"]), default="MEMBER",
                                          required=True)
+
 
     @staticmethod
     def build_id(user_key, club_key):
@@ -88,23 +89,22 @@ class Club(GCModel):
         self.is_open = False
         self.put()
 
+
+    @property
+    def __all_memberships(self):
+        return ClubMembership.query(ndb.AND(ClubMembership.club == self.key,
+                                            ClubMembership.is_active == True))
     @property
     def members(self):
-        return ClubMembership.query(ndb.AND(ClubMembership.club == self.key,
-                                            ClubMembership.membership_type == "MEMBER",
-                                            ClubMembership.is_active == True))
+        return self.__all_memberships.filter(ClubMembership.membership_type == "MEMBER")
 
     @property
     def trainers(self):
-        return ClubMembership.query(ndb.AND(ClubMembership.club == self.key,
-                                            ClubMembership.membership_type == "TRAINER",
-                                            ClubMembership.is_active == True))
+        return self.__all_memberships.filter(ClubMembership.membership_type == "TRAINER")
 
     @property
     def owners(self):
-        return ClubMembership.query(ndb.AND(ClubMembership.club == self.key,
-                                            ClubMembership.membership_type == "OWNER",
-                                            ClubMembership.is_active == True))
+        return self.__all_memberships.filter(ClubMembership.membership_type == "OWNER")
 
 
     # these methods are not used anymore, there's the query()
