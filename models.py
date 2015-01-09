@@ -1,9 +1,13 @@
+from datetime import datetime
+
 from gymcentral.gc_models import GCUser, GCModel
+
 
 __author__ = 'fab,stefano.tranquillini'
 
 from google.appengine.ext import ndb
 
+# TODO create a GCMOdel for the support table that automaitcally has the get/build id
 
 class User(GCUser):
     # this is an expando class
@@ -35,36 +39,58 @@ class Course(GCModel):
     # TODO write test case for this. should be already covered by methods below
     name = ndb.StringProperty(required=True)
     description = ndb.StringProperty(required=True)
-    start_date = ndb.DateTimeProperty(auto_now_add=False)
-    end_date = ndb.DateTimeProperty(auto_now_add=False)
+    start_date = ndb.DateTimeProperty(auto_now_add=True, required=True)
+    end_date = ndb.DateTimeProperty(auto_now_add=True, required=True)
     club = ndb.KeyProperty('Club', required=True)
 
     @property
-    def __all_memberships(self):
-        return ClubMembership.query(ndb.AND(CourseSubscription.course == self.key,
-                                            CourseSubscription.is_active == True))
-    @property
-    def members(self):
-        return self.__all_memberships.filter(CourseSubscription.membership_type == "MEMBER")
+    def subscribers(self):
+        return CourseSubscription.query(ndb.AND(CourseSubscription.course == self.key,
+                                                CourseSubscription.is_active == True,
+                                                CourseSubscription.status == "ACCEPTED"))
 
     @property
     def trainers(self):
-        return self.__all_memberships.filter(CourseSubscription.membership_type == "TRAINER")
+        return CourseTrainers.query(ndb.AND(CourseTrainers.course == self.key,
+                                            CourseTrainers.is_active == True))
 
-class CourseSubscription(GCModel):
+
+class CourseTrainers(GCModel):
+    # http://docs.gymcentralapi.apiary.io/#reference/training-subscription
     # probably is worth switching to this structure http://stackoverflow.com/a/27837999/1257185
     member = ndb.KeyProperty(kind='User', required=True)
     course = ndb.KeyProperty(kind='Course', required=True)
-    membership_type = ndb.StringProperty(choices=set(["MEMBER", "TRAINER"]), default="MEMBER",
-                                         required=True)
     is_active = ndb.BooleanProperty(default=True)
+
 
     @classmethod
     def build_id(cls, user_key, course_key):
         return '%s|%s' % (user_key.urlsafe(), course_key.urlsafe())
+
     @classmethod
-    def get_by_id(cls, user, course_key):
-        return ndb.Key(cls, cls.build_id(user.key, course_key.key)).get()
+    def get_by_id(cls, user, course):
+        return ndb.Key(cls, cls.build_id(user.key, course.key)).get()
+
+
+class CourseSubscription(GCModel):
+    # http://docs.gymcentralapi.apiary.io/#reference/training-subscription
+    member = ndb.KeyProperty(kind='User', required=True)
+    course = ndb.KeyProperty(kind='Course', required=True)
+    is_active = ndb.BooleanProperty(default=True)
+    status = ndb.StringProperty(choices=set(["ACCEPTED", "DECLINED", "PENDING"]), default="PENDING",
+                                required=True)
+    profile_level = ndb.IntegerProperty(default=1, required=True)
+    increase_level = ndb.BooleanProperty(default=False, required=True)
+    feedback = ndb.StringProperty(choices=set(["ACCEPTED", "DECLINED", "PENDING"]), default="PENDING",
+                                  required=True)
+
+    @classmethod
+    def build_id(cls, user_key, course_key):
+        return '%s|%s' % (user_key.urlsafe(), course_key.urlsafe())
+
+    @classmethod
+    def get_by_id(cls, user, course):
+        return ndb.Key(cls, cls.build_id(user.key, course.key)).get()
 
 
 class ClubMembership(GCModel):
@@ -74,6 +100,7 @@ class ClubMembership(GCModel):
     is_active = ndb.BooleanProperty(default=True)
     membership_type = ndb.StringProperty(choices=set(["MEMBER", "TRAINER", "OWNER"]), default="MEMBER",
                                          required=True)
+    # not sure that all these info goes here
 
 
     @staticmethod
@@ -114,6 +141,7 @@ class Club(GCModel):
     def __all_memberships(self):
         return ClubMembership.query(ndb.AND(ClubMembership.club == self.key,
                                             ClubMembership.is_active == True))
+
     @property
     def members(self):
         return self.__all_memberships.filter(ClubMembership.membership_type == "MEMBER")
@@ -130,12 +158,124 @@ class Club(GCModel):
     # these methods are not used anymore, there's the query()
     @classmethod
     def get_by_email(cls, email, **kwargs):
-        return cls.get(cls.query(cls.email == email), kwargs)
+        return cls.query(cls.email == email), kwargs
 
     @classmethod
     def get_by_language(cls, language, **kwargs):
-        return cls.get(cls.query().filter(cls.language == language), kwargs)
+        return cls.query().filter(cls.language == language), kwargs
 
     @classmethod
     def get_by_training(cls, training, **kwargs):
-        return cls.get(cls.query(cls.training_type.IN(training)), kwargs)
+        return cls.query(cls.training_type.IN(training)), kwargs
+
+
+class Session(GCModel):
+    name = ndb.StringProperty(required=True)
+    url = ndb.StringProperty(required=False, default="")
+    session_type = ndb.StringProperty(choices=set(["LIVE", "JOINT", "SINGLE"]), required=True)
+    start_date = ndb.DateTimeProperty(auto_now_add=False, required=True)
+    end_date = ndb.DateTimeProperty(auto_now_add=False, required=True)
+    canceled = ndb.BooleanProperty(default=False, required=True)
+    course = ndb.KeyProperty(kind="Course", required=True)
+    list_exercises = ndb.KeyProperty(kind="Exercise", repeated=True)
+
+    @property
+    def status(self):
+        if self.canceled:
+            return "CANCELED"
+        now = datetime.now()
+        if now < self.start_date:
+            return "UPCOMING"
+        elif now > self.end_date:
+            return "FINISHED"
+        else:
+            return "ONGOING"
+
+    def _post_put_hook(self, future):
+        # check if startdate or and enddate are outside course time, then update course.
+        course = self.course.get()
+        if self.start_date < course.start_date:
+            course.start_date = self.start_date
+        if self.end_date > course.end_date:
+            course.end_date = self.end_date
+        course.put()
+
+    @property
+    def participation_count(self):
+        if self.status == "FINISHED":
+            return ExercisePerformance.query(ExercisePerformance.session == self.key,
+                                             projection=[ExercisePerformance.user],
+                                             group_by=[ExercisePerformance.user]).count()
+        else:
+            return 0
+
+    @property
+    def activity_count(self):
+        return len(self.list_exercises)
+
+    @property
+    def exercises(self):
+        return ndb.get_multi(self.list_exercises)
+
+
+class IndicatorObject(GCModel):
+    pass
+    # name
+
+
+# type
+# description
+# club
+
+class Exercise(GCModel):
+    name = ndb.StringProperty()
+    list_levels = ndb.KeyProperty(kind='Level', repeated=True)
+
+
+    @property
+    def levels(self):
+        return ndb.get_multi(self.list_levels)
+
+
+# session
+# name
+# assuming that there are no more than 10 levels and indicators..
+# peformances (repated)
+# levels repeated
+
+
+
+class Level(GCModel):
+    description = ndb.StringProperty()
+
+
+# description
+# url
+# levelindicators (repeated)
+
+class LevelIndicator(GCModel):
+    # indicator
+    # value
+    pass
+
+
+class ExercisePerformance(GCModel):
+    session = ndb.KeyProperty(kind="Session", required=True)
+    user = ndb.KeyProperty(kind="User", required=True)
+    level = ndb.KeyProperty(kind="Level", required=True)
+
+
+# level
+# session
+# indicator
+#   user
+#   timestamp
+#   value
+
+class GeneralPerformance(GCModel):
+    pass
+
+#   user
+#   timestamp
+#   indicator
+#   value

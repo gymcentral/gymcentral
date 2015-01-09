@@ -134,7 +134,7 @@ def club_membership(req, id):
         for member in trainers:
             res_user = {}
             j_user = json_serializer(member)
-            res_user['user'] = sanitize_json(j_user, allowed=["fname", "sname", "avatar"])
+            res_user['user'] = sanitize_json(j_user, allowed=["fname", "sname", "picture"])
             res_user['type'] = "TRAINER"
             l_users.append(res_user)
             global_total += total
@@ -144,7 +144,7 @@ def club_membership(req, id):
         for member in members:
             res_user = {}
             j_user = json_serializer(member)
-            res_user['user'] = sanitize_json(j_user, allowed=["fname", "sname", "avatar"])
+            res_user['user'] = sanitize_json(j_user, allowed=["username", "avatar"])
             res_user['type'] = "MEMBER"
             l_users.append(res_user)
             global_total += total
@@ -155,8 +155,14 @@ def club_membership(req, id):
 
 
 @app.route('/clubs/<id>/courses', methods=('GET',))
-def club_courses(req, id):
-    # TODO: write test case
+def course_list(req, id):
+    '''
+    Gets the list of courses of a club
+    http://docs.gymcentralapi.apiary.io/#reference/training-offers/training-offers/training-offers-list
+    :param req: requ object
+    :param id: club id
+    :return: list of courses
+    '''
     club = APIDB.get_club_by_id(id)
     if not club:
         raise NotFoundException()
@@ -177,3 +183,65 @@ def club_courses(req, id):
     ret['results'] = res_courses
     ret['total'] = total
     return ret
+
+
+@app.route('/courses/<id>', methods=('GET',))
+def course_detail(req, id):
+    '''
+    returns the details of a course
+    http://docs.gymcentralapi.apiary.io/#reference/training-offers/training-offer/single-training-offer
+    :param req: request object
+    :param id: id of the course
+    :return: the course details
+    '''
+    course = APIDB.get_course_by_id(id)
+    if not course:
+        raise NotFoundException()
+    j_course = json_serializer(course)
+    j_course["trainers"] = sanitize_list(APIDB.get_course_trainers(course), allowed=["fname", "sname", "picture"])
+    j_course["subscriber_count"] = APIDB.get_course_subscribers(course, count_only=True)
+    j_course["session_count"] = -1  # APIDB.get_sessions(course, count_only=True)
+    return sanitize_json(j_course, allowed=["id", "name", "description", "start_date", "end_date", "trainers",
+                                            "subscriber_count", "session_count"])
+
+
+@app.route('/courses/<id>/subscribers', methods=('GET',))
+def course_subscribers_list(req, id):
+    '''
+    Gets the list of subscribers of a course
+    http://docs.gymcentralapi.apiary.io/#reference/training-offers/training-subscribers/training-subscribers-list
+    :param req: req object
+    :param id: course id
+    :return: list of subscribers, only nickname and avatar
+    '''
+    course = APIDB.get_course_by_id(id)
+    if not course:
+        raise NotFoundException()
+    j_req = json_from_paginated_request(req)
+    page = int(j_req['page'])
+    size = int(j_req['size'])
+    subscribers, total = APIDB.get_course_subscribers(course, paginated=True, page=page, size=size)
+    ret = {}
+    ret['results'] = sanitize_list(subscribers, allowed=["nickname", "avatar"])
+    ret['total'] = total
+    return ret
+
+
+@app.route('/courses/<id>/subscription', methods=('GET',))
+@user_required
+def course_subscription_detail(req, id):
+    '''
+    Gets the subscription detail of the logged user for that precise course
+    http://docs.gymcentralapi.apiary.io/#reference/training-subscription/training-subscription/training-subscription
+    :param req: req object
+    :param id: course id
+    :return: list of subscribers, only nickname and avatar
+    '''
+    course = APIDB.get_course_by_id(id)
+    if not course:
+        raise NotFoundException()
+    subscription = APIDB.get_course_subscription(course, req.user)
+    if not subscription:
+        raise NotFoundException()
+    return sanitize_json(json_serializer(subscription), hidden=['member', 'course'])
+
