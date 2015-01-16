@@ -1,3 +1,5 @@
+import datetime
+
 from google.appengine.ext import ndb
 from google.appengine.ext.ndb.key import Key
 from google.appengine.ext.ndb.query import Query
@@ -35,7 +37,7 @@ class APIDB():
 
     @classmethod
     def get_user_by_id(cls, id_user):
-        return cls.model_user.get_by_id(long(id_user))
+        return cls.model_user.get_by_id(id_user)
 
     @staticmethod
     def __create(model, **args):
@@ -80,7 +82,7 @@ class APIDB():
 
     @classmethod
     def get_club_by_id(cls, id_club):
-        return cls.model_club.get_by_id(long(id_club))
+        return cls.model_club.get_by_id(id_club)
 
 
     @classmethod
@@ -97,8 +99,12 @@ class APIDB():
 
 
     @classmethod
-    def get_club_courses(cls, club, **kwargs):
-        raise NotImplementedError()
+    def get_club_courses(cls, club, active_only=True, **kwargs):
+        query = cls.model_course.query(cls.model_course.club == club.key)
+        if active_only:
+            query = cls.model_course.query(cls.model_course.club == club.key,
+                                           cls.model_course.end_date > datetime.now())
+        return cls.__get(query, **kwargs)
 
     @classmethod
     def add_member_to_club(cls, user, club):
@@ -143,13 +149,32 @@ class APIDB():
         else:
             return None
 
+    @classmethod
+    def get_session_im_subscribed(cls, user, club, date_from=None, date_to=None, session_type=None, **kwargs):
+        # FIXME: this is different from the documentation, only start date allowed here.
+        courses = cls.model_course.query(cls.model_course.club == club.key).fetch(keys_only=True)
+        subscription_keys = [ndb.Key(cls.model_course_user, cls.model_course_user.build_id(user, course))
+                             for course in courses]
+        real_list = [s for s in ndb.get_multi(subscription_keys) if s is not None]
+        sessions = cls.model_session.query(cls.model_session.course.IN(real_list),
+                                           cls.model_session.start_date >= date_from,
+                                           cls.model_session.start_date <= date_to)
+        if session_type:
+            sessions.filter(cls.model_session.session_type == session_type)
+        return cls.__get(sessions, **kwargs)
+
+    @classmethod
+    def is_user_subscribed_to_club(cls, user, club):
+        return ndb.Key(cls.model_club_user, cls.model_club_user.build_id(user, club)).get() is not None
+
+
     # [END] club
 
     # [START] Courses
 
     @classmethod
     def get_course_by_id(cls, id_course):
-        return cls.model_course.get_by_id(long(id_course))
+        return cls.model_course.get_by_id(id_course)
 
     @classmethod
     def add_member_to_course(cls, user, course, status="PENDING"):
@@ -187,6 +212,10 @@ class APIDB():
     # def rm_owner_from_course(cls, user, course):
     # cls.rm_member_from_course(user, course)
 
+    @classmethod
+    def is_user_subscribed_to_course(cls, user, course):
+        return ndb.Key(cls.model_course_user, cls.model_course_user.build_id(user, course)).get() is not None
+
 
     @classmethod
     def get_course_subscribers(cls, course, **kwargs):
@@ -200,6 +229,11 @@ class APIDB():
     @classmethod
     def get_course_trainers(cls, course, **kwargs):
         return cls.__memberships_to_results(cls.__get(course.trainers, **kwargs))
+
+
+    @classmethod
+    def get_course_sessions(cls, course, **kwargs):
+        return cls.__get(cls.model_session.query(cls.model_session.course == course.key), **kwargs)
 
     # [END] Courses
 
@@ -233,13 +267,17 @@ class APIDB():
         return float(completed_ex) / float(session.activity_count) * 100.0
 
     @classmethod
-    def get_session_activities(cls, session, **kwargs):
-        # in case one wants everything, then return the property which does the ndb.getmulti,
-        if not kwargs:
-            return session.exercises
-        # otherwhise use the list to cut it and then retreive the data, more efficent if there's a large number of exercises.
-        else:
-            return cls.__get(session.list_exercises, **kwargs)
+    def get_session_user_activities(cls, session, user, **kwargs):
+        l = session.list_exercises
+        subscription = cls.get_course_subscription(session.course, user)
+        res = l - subscription.exercises_i_cant_do
+        return cls.__get(res, **kwargs)
+
+
+    @classmethod
+    def get_session_by_id(cls, id_session):
+        return cls.model_session.get_by_id(id_session)
+
 
     # [END] Session
 
@@ -252,6 +290,25 @@ class APIDB():
             return exercise.levels
         else:
             return cls.__get(exercise.list_levels, **kwargs)
+
+    @classmethod
+    def get_user_level_for_activity(cls, user, activity, session):
+        session_profile = session.profile
+        user_level_assigned = APIDB.get_course_subscription(session.course, user).profile_level
+        level_profile = session_profile[user_level_assigned]
+        activity_level = None
+        for level in level_profile:
+            if level['activityId'] == activity.id():
+                activity_level = int(level['level'])
+        if not activity_level:
+            return None
+        levels = activity.levels
+        for level in levels:
+            if level.level_number == activity_level:
+                return level
+        return None
+
+
     # [END] Exercise
 
     @classmethod
@@ -324,7 +381,7 @@ class APIDB():
             return ndb.get_multi(l)
         else:
             return l
-        
+
     @classmethod
     def __memberships_to_results(cls, result):
         # empty list
@@ -349,4 +406,6 @@ class APIDB():
             return members, total
         else:
             return members
+
+
 

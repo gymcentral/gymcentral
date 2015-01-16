@@ -1,9 +1,12 @@
+from datetime import datetime
+
 from api_db_utils import APIDB
 import cfg
 from gymcentral.app import WSGIApp
 from gymcentral.auth import user_required, GCAuth
 from gymcentral.exceptions import AuthenticationError, NotFoundException
-from gymcentral.gc_utils import json_serializer, sanitize_json, sanitize_list, json_from_paginated_request
+from gymcentral.gc_utils import json_serializer, sanitize_json, sanitize_list, json_from_paginated_request, \
+    json_from_request
 
 
 __author__ = 'stefano tranquillini'
@@ -11,35 +14,58 @@ __author__ = 'stefano tranquillini'
 app = WSGIApp(config=cfg.API_APP_CFG, debug=cfg.DEBUG)
 
 
-@app.route("/dummy", methods=('GET', 'POST', ))
+@app.route("/hw", methods=('GET', ))
 def hw(req):
     return "hello world!"
 
 
-@app.route('/profile', methods=('GET',))
+@app.route("/hw", methods=('POST', ))
+def hw_post(req):
+    return 200, dict(input=json_from_request(req))
+
+
+@app.route('/users/current', methods=('GET',))
 @user_required
 def profile(req):
-    '''n
+    '''
     Profile of the current user
-    http://docs.gymcentralapi.apiary.io/#reference/user-profile/profile/my-profile
     :param req:
     :return: profile of the current user
     '''
+    # TODO: test
     j_user = json_serializer(req.user)
-    out = ['id', 'fname', 'sname', 'nickname', 'gender', 'picture', 'avatar', 'birthday', 'country', 'city', 'language',
+    out = ['id', 'name', 'nickname', 'gender', 'picture', 'avatar', 'birthday', 'country', 'city', 'language',
            'email', 'phone', 'active_club']
     return sanitize_json(j_user, out)
 
 
+@app.route('/users/current', methods=('PUT',))
+@user_required
+def profile_update(req):
+    '''
+    Update the profile
+    :param req:
+    :return: profile of the current user
+    '''
+    # TODO: test
+
+    j_req = json_from_request(req)
+    user = req.user
+    for key, value in j_req:
+        if hasattr(user, key):
+            setattr(user, key, value)
+    user.put()
+    return 200, None
+
+
 @app.route('/clubs', methods=('GET',))
 def club_list(req):
-    # IMP: OK
     """
     List of all the clubs, paginated
-    http://docs.gymcentralapi.apiary.io/#reference/clubs/clubs/club-list
     :param req:
     :return:
     """
+    # TODO: test
     # check if there's the filter
     j_req = json_from_paginated_request(req, (('member', None),))
     user_filter = bool(j_req['member'])
@@ -52,7 +78,7 @@ def club_list(req):
         if user:
             clubs, total = APIDB.get_user_member_of(user, paginated=True, page=page, size=size)
         else:
-            raise AuthenticationError("user_filter is set but user is missing")
+            raise AuthenticationError("member is set but user is missing")
     else:
         clubs, total = APIDB.get_clubs(paginated=True, page=page, size=size)
 
@@ -63,49 +89,48 @@ def club_list(req):
         j_club = json_serializer(club)
         j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
         j_club['course_count'] = 0  # APIDB.get_club_courses(club,count_only=True)
-        j_club['owners'] = sanitize_list(json_serializer(APIDB.get_club_owners(club)), ['fname', 'sname', 'picture'])
+        j_club['owners'] = sanitize_list(json_serializer(APIDB.get_club_owners(club)), ['name', 'picture'])
         items.append(j_club)
-    ret['results'] = sanitize_list(items, ['id', 'name', 'description', 'url', 'created', 'is_open', 'tags', 'owners',
-                                           'member_count', 'course_count'])
+    ret['results'] = sanitize_list(items,
+                                   ['id', 'name', 'description', 'url', 'creation_date', 'is_open', 'tags', 'owners',
+                                    'member_count', 'course_count'])
 
     ret['total'] = total
     return ret
 
 
-@app.route('/clubs/<id>', methods=('GET',))
-def club_details(req, id):
-    # IMP: OK
+@app.route('/clubs/<id_club>', methods=('GET',))
+def club_details(req, id_club):
     """
     gets the details of a club
-    http://docs.gymcentralapi.apiary.io/#reference/clubs/club/single-club
     :param req:
-    :param id: id of the club
+    :param id_club: id_club of the club
     :return: the detail of the club
     """
-    club = APIDB.get_club_by_id(id)
-    if club:
-        j_club = json_serializer(club)
-        j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
-        j_club['course_count'] = APIDB.get_club_courses(club, count_only=True)
-        j_club['owners'] = sanitize_list(json_serializer(APIDB.get_club_owners(club)), ['fname', 'sname', 'picture'])
-        # in case we need to populate it.
-        # j_club['members'] = sanitize_list(club.members, allowed=['fname', 'sname', 'avatar'])
-        # j_club['courses'] = sanitize_list(club.courses, allowed=['id', 'name', 'description'])
-        return sanitize_json(j_club, ['id', 'name', 'description', 'url', 'created', 'is_open', 'tags', 'owners',
-                                      'member_count', 'course_count'])
-    else:
+    # TODO: test
+    club = APIDB.get_club_by_id(id_club)
+    if not club:
         raise NotFoundException()
+    if not APIDB.is_user_subscribed_to_club(req.user, club):
+        raise NotFoundException()
+    j_club = json_serializer(club)
+    j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
+    j_club['courses'] = sanitize_list(json_serializer(APIDB.get_club_courses(club)),
+                                      ['name', 'start_date', 'end_date'])
+    j_club['owners'] = sanitize_list(json_serializer(APIDB.get_club_owners(club)), ['name', 'picture'])
+    return sanitize_json(j_club, ['id', 'name', 'description', 'url', 'creation_date', 'is_open', 'owners',
+                                  'member_count', 'courses'])
 
 
 @app.route('/clubs/<id>/membership', methods=('GET',))
 def club_membership(req, id):
     """
     gets the list of members for a club
-    http://docs.gymcentralapi.apiary.io/#reference/memberships/memberships/memberships-list
     :param req:
     :param id: id of the club
     :return:
     """
+    # TODO: test
     club = APIDB.get_club_by_id(id)
     if not club:
         raise NotFoundException()
@@ -122,9 +147,8 @@ def club_membership(req, id):
     if not role or role == "OWNER":
         owners, total = APIDB.get_club_owners(club, paginated=True, page=page, size=size)
         for member in owners:
-            res_user = {}
             j_user = json_serializer(member)
-            res_user['user'] = sanitize_json(j_user, allowed=["fname", "sname", "picture"])
+            res_user = sanitize_json(j_user, allowed=["name", "picture", "id"])
             res_user['type'] = "OWNER"
             l_users.append(res_user)
             global_total += total
@@ -132,9 +156,8 @@ def club_membership(req, id):
     if not role or role == "TRAINER":
         trainers, total = APIDB.get_club_trainers(club, paginated=True, page=page, size=size)
         for member in trainers:
-            res_user = {}
             j_user = json_serializer(member)
-            res_user['user'] = sanitize_json(j_user, allowed=["fname", "sname", "picture"])
+            res_user = sanitize_json(j_user, allowed=["name", "picture", "id"])
             res_user['type'] = "TRAINER"
             l_users.append(res_user)
             global_total += total
@@ -142,9 +165,8 @@ def club_membership(req, id):
     if not role or role == "MEMBER":
         members, total = APIDB.get_club_members(club, paginated=True, page=page, size=size)
         for member in members:
-            res_user = {}
             j_user = json_serializer(member)
-            res_user['user'] = sanitize_json(j_user, allowed=["username", "avatar"])
+            res_user = sanitize_json(j_user, allowed=["username", "avatar", "id"])
             res_user['type'] = "MEMBER"
             l_users.append(res_user)
             global_total += total
@@ -158,14 +180,15 @@ def club_membership(req, id):
 def course_list(req, id):
     '''
     Gets the list of courses of a club
-    http://docs.gymcentralapi.apiary.io/#reference/training-offers/training-offers/training-offers-list
     :param req: requ object
     :param id: club id
     :return: list of courses
     '''
+    # TODO: test
     club = APIDB.get_club_by_id(id)
     if not club:
         raise NotFoundException()
+
     j_req = json_from_paginated_request(req)
     page = int(j_req['page'])
     size = int(j_req['size'])
@@ -173,7 +196,7 @@ def course_list(req, id):
     res_courses = []
     for course in courses:
         j_course = json_serializer(course)
-        j_course["trainers"] = sanitize_list(APIDB.get_course_trainers(course), allowed=["fname", "sname", "picture"])
+        j_course["trainers"] = sanitize_list(APIDB.get_course_trainers(course), allowed=["id", "name", "picture"])
         j_course["subscriber_count"] = APIDB.get_course_subscribers(course, count_only=True)
         j_course["session_count"] = -1  # APIDB.get_sessions(course, count_only=True)
         res_course = sanitize_json(j_course, allowed=["id", "name", "description", "start_date", "end_date", "trainers",
@@ -186,6 +209,7 @@ def course_list(req, id):
 
 
 @app.route('/courses/<id>', methods=('GET',))
+@user_required
 def course_detail(req, id):
     '''
     returns the details of a course
@@ -194,11 +218,14 @@ def course_detail(req, id):
     :param id: id of the course
     :return: the course details
     '''
+    # TODO: test
     course = APIDB.get_course_by_id(id)
     if not course:
         raise NotFoundException()
+    if not APIDB.is_user_subscribed_to_course(req.user, course):
+        raise NotFoundException()
     j_course = json_serializer(course)
-    j_course["trainers"] = sanitize_list(APIDB.get_course_trainers(course), allowed=["fname", "sname", "picture"])
+    j_course["trainers"] = sanitize_list(APIDB.get_course_trainers(course), allowed=["id", "name", "picture"])
     j_course["subscriber_count"] = APIDB.get_course_subscribers(course, count_only=True)
     j_course["session_count"] = -1  # APIDB.get_sessions(course, count_only=True)
     return sanitize_json(j_course, allowed=["id", "name", "description", "start_date", "end_date", "trainers",
@@ -206,24 +233,25 @@ def course_detail(req, id):
 
 
 @app.route('/courses/<id>/subscribers', methods=('GET',))
+@user_required
 def course_subscribers_list(req, id):
     '''
     Gets the list of subscribers of a course
-    http://docs.gymcentralapi.apiary.io/#reference/training-offers/training-subscribers/training-subscribers-list
     :param req: req object
     :param id: course id
     :return: list of subscribers, only nickname and avatar
     '''
+    # TODO: test
     course = APIDB.get_course_by_id(id)
     if not course:
+        raise NotFoundException()
+    if not APIDB.is_user_subscribed_to_course(req.user, course):
         raise NotFoundException()
     j_req = json_from_paginated_request(req)
     page = int(j_req['page'])
     size = int(j_req['size'])
     subscribers, total = APIDB.get_course_subscribers(course, paginated=True, page=page, size=size)
-    ret = {}
-    ret['results'] = sanitize_list(subscribers, allowed=["nickname", "avatar"])
-    ret['total'] = total
+    ret = dict(results=sanitize_list(subscribers, allowed=["id", "nickname", "avatar"]), total=total)
     return ret
 
 
@@ -237,11 +265,128 @@ def course_subscription_detail(req, id):
     :param id: course id
     :return: list of subscribers, only nickname and avatar
     '''
+    # TODO: test
     course = APIDB.get_course_by_id(id)
     if not course:
         raise NotFoundException()
     subscription = APIDB.get_course_subscription(course, req.user)
     if not subscription:
         raise NotFoundException()
-    return sanitize_json(json_serializer(subscription), hidden=['member', 'course'])
+    return sanitize_json(json_serializer(subscription), hidden=['member', 'course', 'is_active'])
 
+
+# Training session
+
+@app.route('/courses/<id>/sessions', methods=('GET',))
+@user_required
+def course_session_list(req, id):
+    '''
+    list of training sessions
+    http://docs.gymcentralapi.apiary.io/#reference/training-sessions/training-sessions-list
+    :param req: the req object
+    :param id: id of the course
+    :return: list of the training session
+    '''
+    # TODO: test
+    course = APIDB.get_course_by_id(id)
+    if not course:
+        raise NotFoundException()
+    if not APIDB.is_user_subscribed_to_course(req.user, course):
+        raise NotFoundException()
+    j_req = json_from_paginated_request(req)
+    page = int(j_req['page'])
+    size = int(j_req['size'])
+    total, sessions = APIDB.get_course_sessions(course, paginated=True, page=page, size=size)
+    res_list = []
+    for session in sessions:
+        res_obj = json_serializer(session)
+        res_obj['status'] = session.status
+        # res_obj['participated'] = APIDB.user_participated_in_session(req.user, session)
+        res_obj['participation_count'] = session.participation_count
+        # res_obj['activity_count'] = session.activity_count
+        res_obj['max_score'] = APIDB.session_completeness(req.user, session)
+        res_list.append(sanitize_json(res_obj, hidden=['course', 'list_exercises']))
+    ret_list = []
+    ret_list['total'] = total
+    ret_list['results'] = res_list
+    return ret_list
+
+
+@app.route('/club/<id>/sessions', methods=('GET',))
+@user_required
+def club_session_list(req, id):
+    '''
+    list of training sessions
+    http://docs.gymcentralapi.apiary.io/#reference/training-sessions/training-sessions-list
+    :param req: the req object
+    :param id: id of the course
+    :return: list of the training session
+    '''
+    # TODO: test
+    club = APIDB.get_club_by_id(id)
+    if not club:
+        raise NotFoundException()
+    if not APIDB.is_user_subscribed_to_club(req.user, club):
+        raise NotFoundException()
+    j_req = json_from_paginated_request(req, [('status', 'UPCOMING'), ('type', None), ('from', None), ('to', None)])
+    page = int(j_req['page'])
+    size = int(j_req['size'])
+    date_from = datetime.fromtimestamp(j_req['from'])
+    date_to = datetime.fromtimestamp(j_req['to'])
+    session_type = j_req['type']
+    total, sessions = APIDB.get_session_im_subscribed(club, req.user, date_from, date_to, session_type, paginated=True,
+                                                      page=page, size=size)
+    res_list = []
+    for session in sessions:
+        res_obj = json_serializer(session)
+        res_obj['status'] = session.status
+        res_obj['participated'] = APIDB.user_participated_in_session(req.user, session)
+        res_obj['participation_count'] = session.participation_count
+        res_obj['activity_count'] = session.activity_count
+        res_obj['max_score'] = APIDB.session_completeness(req.user, session)
+        res_list.append(sanitize_json(res_obj, hidden=['course', 'list_exercises']))
+    ret_list = []
+    ret_list['total'] = total
+    ret_list['results'] = res_list
+    return ret_list
+
+    # Training session
+
+
+@app.route('sessions/<id>', methods=('GET',))
+@user_required
+def club_session_detail(req, id_session):
+    '''
+    list of training sessions
+    :param req: the req object
+    :param id: id of the session
+    :return: detail of the session
+    '''
+    # TODO: test
+    session = APIDB.get_session_by_id(id_session)
+    if not session:
+        raise NotFoundException()
+    if not APIDB.is_user_subscribed_to_course(req.user, session.course):
+        raise NotFoundException()
+    j_session = json_serializer(session)
+    j_session['no_of_participants'] = session.participation_count
+    j_session['status'] = session.status
+    activities = APIDB.get_session_user_activities(session, req.user)
+    res_list = []
+    for activity in activities:
+        j_activity = json_serializer(activity)
+        level = APIDB.get_user_level_for_activity(req.user, activity, session)
+        j_activity['level'] = level.level_number
+        j_activity['description'] = level.description
+        j_activity['source'] = level.source
+        # missing indicators
+        # missing details
+        res_list.append(j_activity)
+    j_session['activities'] = sanitize_list(res_list,
+                                            allowed=['name', 'description', 'level', 'source', 'details', 'indicators'])
+    res = sanitize_json(j_session,
+                        allowed=['id', 'name', 'type', 'status', 'start_date', 'end_date', 'no_of_participants',
+                                 'activities'])
+    return res
+
+    # Training session

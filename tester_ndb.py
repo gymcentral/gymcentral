@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from models import Course, Session, ExercisePerformance, Exercise, Level
+from models import Course, Session, ExercisePerformance, Exercise, Level, CourseSubscription
 
 
 __author__ = 'stefano'
@@ -34,7 +34,7 @@ class NDBTestCase(unittest.TestCase):
         # test the club
         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
                                  training_type=["balance", "stability"], tags=["test", "trento"])
-        self.assertEqual(club, APIDB.get_club_by_id(club.key.id()), "Club with id not found")
+        self.assertEqual(club, APIDB.get_club_by_id(club.id), "Club with id not found")
 
         # count_only=True does the same result as len(APIDB.get_clubs()). the count_only is more efficient
         self.assertEqual(1, APIDB.get_clubs(count_only=True), "Error in query all club")
@@ -141,10 +141,14 @@ class NDBTestCase(unittest.TestCase):
         APIDB.add_member_to_club(member, club)
         course = Course(name="test course", description="test course", club=club.key)
         course.put()
+        cs = CourseSubscription(id=CourseSubscription.build_id(member.key, course.key), member=member.key,
+                                course=course.key)
+        cs.put()
         session = Session(name="session test", session_type="JOINT", course=course.key,
                           start_date=(datetime.now() - timedelta(hours=2)),
                           end_date=(datetime.now() - timedelta(minutes=1)))
         session.put()
+        self.assertEqual(1, APIDB.get_course_sessions(course, count_only=True))
         self.assertEqual("FINISHED", session.status, "Status is wrong")
         level = Level()
         level.put()
@@ -178,8 +182,8 @@ class NDBTestCase(unittest.TestCase):
         self.assertEqual(2, session.activity_count, "Activity are incorrect")
 
         # just for ref
-        # print APIDB.get_session_activities(session)
-        # print APIDB.get_session_activities(session, paginated=True)
+        # print APIDB.get_session_user_activities(session)
+        # print APIDB.get_session_user_activities(session, paginated=True)
 
         member = APIDB.create_user("own:" + "member", username="member", fname="test", sname="test", avatar="..",
                                    unique_properties=['username'])
