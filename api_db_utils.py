@@ -270,7 +270,7 @@ class APIDB():
     def get_session_user_activities(cls, session, user, **kwargs):
         l = session.list_exercises
         subscription = cls.get_course_subscription(session.course, user)
-        res = l - subscription.exercises_i_cant_do
+        res = [ex for ex in l if ex not in subscription.exercises_i_cant_do]
         return cls.__get(res, **kwargs)
 
 
@@ -286,23 +286,34 @@ class APIDB():
     @classmethod
     def get_activity_levels(cls, exercise, **kwargs):
         # refer to get_session_acrivities
-        if not kwargs:
-            return exercise.levels
-        else:
-            return cls.__get(exercise.list_levels, **kwargs)
+        # if not kwargs:
+        #     return exercise.levels
+        # else:
+        return cls.__get(exercise.list_levels, **kwargs)
 
     @classmethod
     def get_user_level_for_activity(cls, user, activity, session):
         session_profile = session.profile
         user_level_assigned = APIDB.get_course_subscription(session.course, user).profile_level
-        level_profile = session_profile[user_level_assigned]
+        if user_level_assigned > len(session_profile):
+            return None
+
+        level_profile = session_profile[user_level_assigned - 1]
         activity_level = None
+        # find the correct level value
+        # profile is a matrix where there's  level
+        # and for each level there is an array of activity with the level set
+        # [
+        # [{"activityId": 123, "level": 1},{"activityId": 421, "level": 2}],
+        # [{"activityId": 123, "level": 3},{"activityId": 421, "level": 4}]
+        # ]
         for level in level_profile:
-            if level['activityId'] == activity.id():
+            if level['activityId'] == activity.id:
                 activity_level = int(level['level'])
         if not activity_level:
             return None
         levels = activity.levels
+        # this searches for the correct level
         for level in levels:
             if level.level_number == activity_level:
                 return level
@@ -360,7 +371,6 @@ class APIDB():
             if count_only:
                 return len(o)
             if not paginated:
-
                 if size == -1:
                     return cls.__get_multi_if_needed(o)
                 return cls.__get_multi_if_needed(o[:size])
@@ -372,7 +382,6 @@ class APIDB():
                 start = offset if offset < len(o) else len(o)
                 end = offset + size if offset + size < len(o) else len(o)
                 data = o[start:end]
-
                 return cls.__get_multi_if_needed(data), len(o)
 
     @classmethod

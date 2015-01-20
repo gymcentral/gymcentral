@@ -1,3 +1,4 @@
+from _ast import Set
 from datetime import datetime
 
 from gymcentral.gc_models import GCUser, GCModel, GCModelMtoMNoRep
@@ -69,13 +70,13 @@ class CourseSubscription(GCModelMtoMNoRep):
     member = ndb.KeyProperty(kind='User', required=True)
     course = ndb.KeyProperty(kind='Course', required=True)
     is_active = ndb.BooleanProperty(default=True)
-    status = ndb.StringProperty(choices=set(["ACCEPTED", "DECLINED", "PENDING"]), default="PENDING",
+    status = ndb.StringProperty(choices=["ACCEPTED", "DECLINED", "PENDING"], default="PENDING",
                                 required=True)
     profile_level = ndb.IntegerProperty(default=1, required=True)
     # list of exercise i can't do.
     exercises_i_cant_do = ndb.KeyProperty(kind='Exercise', repeated=True)
     increase_level = ndb.BooleanProperty(default=False, required=True)
-    feedback = ndb.StringProperty(choices=set(["ACCEPTED", "DECLINED", "PENDING"]), default="PENDING",
+    feedback = ndb.StringProperty(choices=["ACCEPTED", "DECLINED", "PENDING"], default="PENDING",
                                   required=True)
 
 
@@ -84,7 +85,7 @@ class ClubMembership(GCModelMtoMNoRep):
     member = ndb.KeyProperty(kind='User', required=True)
     club = ndb.KeyProperty(kind='Club', required=True)
     is_active = ndb.BooleanProperty(default=True)
-    membership_type = ndb.StringProperty(choices=set(["MEMBER", "TRAINER", "OWNER"]), default="MEMBER",
+    membership_type = ndb.StringProperty(choices=["MEMBER", "TRAINER", "OWNER"], default="MEMBER",
                                          required=True)
     # not sure that all these info goes here
 
@@ -99,7 +100,7 @@ class Club(GCModel):
     description = ndb.StringProperty()
     url = ndb.StringProperty(required=True)
     is_deleted = ndb.BooleanProperty(default=False)
-    language = ndb.StringProperty(choices=set(["it", "en"]), default="en", required=True)
+    language = ndb.StringProperty(default="en", required=True)
     training_type = ndb.StringProperty(repeated=True, indexed=True)
     is_open = ndb.BooleanProperty(default=True)
     tags = ndb.StringProperty(repeated=True)
@@ -149,13 +150,14 @@ class Club(GCModel):
 class Session(GCModel):
     name = ndb.StringProperty(required=True)
     url = ndb.StringProperty(required=False, default="")
-    session_type = ndb.StringProperty(choices=set(["LIVE", "JOINT", "SINGLE"]), required=True)
+    session_type = ndb.StringProperty(choices=["LIVE", "JOINT", "SINGLE"], required=True)
     start_date = ndb.DateTimeProperty(auto_now_add=False, required=True)
     end_date = ndb.DateTimeProperty(auto_now_add=False, required=True)
     canceled = ndb.BooleanProperty(default=False, required=True)
     course = ndb.KeyProperty(kind="Course", required=True)
     list_exercises = ndb.KeyProperty(kind="Exercise", repeated=True)
     profile = ndb.JsonProperty()
+    meta_data = ndb.JsonProperty()
 
 
     @property
@@ -193,56 +195,29 @@ class Session(GCModel):
 
 
 
-class Exercise(GCModel):
-    name = ndb.StringProperty()
-    list_levels = ndb.KeyProperty(kind='Level', repeated=True)
-    # TODO: exericse belongs to trainers or to a club or what?
-    created_for = ndb.KeyProperty(kind='Club', required=True)
-
-
-    @property
-    def levels(self):
-        return ndb.get_multi(self.list_levels)
-
-
-# session
-# name
-# assuming that there are no more than 10 levels and indicators..
-# peformances (repated)
-# levels repeated
-
 
 class Source(GCModel):
-    source_type = ndb.StringProperty(choices=set(["VIDEO", "AUDIO", "IMAGE", "TEXT"]), required=True)
+    source_type = ndb.StringProperty(choices=["VIDEO", "AUDIO", "IMAGE", "TEXT"], required=True)
     hd_link = ndb.StringProperty()
     sd_link = ndb.StringProperty()
     download_link = ndb.StringProperty()
 
 
+class Detail(GCModel):
+    created_for = ndb.KeyProperty(kind='Club', required=True)
+    name = ndb.StringProperty(required=True)
+    detail_type = ndb.StringProperty()
+    description = ndb.StringProperty(required=True)
+
+
 class Level(GCModel):
     level_number = ndb.IntegerProperty(required=True)
     description = ndb.StringProperty()
-    source = ndb.StructuredProperty(Source, required=True)
-
-
-# description
-# url
-# levelindicators (repeated)
-
-class IndicatorObject(GCModel):
-
-    pass
-    # name
-
-
-# type
-# description
-# club
-
-class LevelIndicator(GCModel):
-    # indicator
-    # value
-    pass
+    source = ndb.StructuredProperty(Source)
+    # here we store the Details and value in a list of objects.
+    # it's not as possible answers where the value is set
+    # here the details can be reused and value changes from time to time
+    details = ndb.JsonProperty()
 
 
 class ExercisePerformance(GCModel):
@@ -250,21 +225,36 @@ class ExercisePerformance(GCModel):
     user = ndb.KeyProperty(kind="User", required=True)
     level = ndb.KeyProperty(kind="Level", required=True)
     when = ndb.DateTimeProperty(auto_now_add=True)
-    # indicator = ndb.KeyProperty
-    # value =
 
 
-# level
-# session
-# indicator
-# user
-# timestamp
-# value
+class PossibleAnswer(GCModel):
+    # this is fixed
+    name = ndb.StringProperty()
+    text = ndb.StringProperty()
+    img = ndb.StringProperty()
+    value = ndb.StringProperty()
+    answer_type = ndb.StringProperty(choices=["TEXT", "MULTIPLECHOICE", "CHECKBOXES"],default="TEXT")
 
-class GeneralPerformance(GCModel):
-    pass
 
-# user
-# timestamp
-# indicator
-# value
+class Indicator(GCModel):
+    name = ndb.StringProperty(required=True)
+    indicator_type = ndb.StringProperty()
+    description = ndb.StringProperty(required=True)
+    possible_answers = ndb.StructuredProperty(PossibleAnswer, repeated=True)
+    required = ndb.BooleanProperty(default=True)
+
+
+class Exercise(GCModel):
+    name = ndb.StringProperty()
+    list_levels = ndb.KeyProperty(kind='Level', repeated=True)
+    # TODO: exericse belongs to trainers or to a club or what?
+    created_for = ndb.KeyProperty(kind='Club', required=True)
+    indicator_list = ndb.KeyProperty(kind="Indicator", repeated=True)
+
+    @property
+    def levels(self):
+        return ndb.get_multi(self.list_levels)
+
+    @property
+    def indicators(self):
+        return ndb.get_multi(self.indicator_list)

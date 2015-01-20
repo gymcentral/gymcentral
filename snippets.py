@@ -1,7 +1,5 @@
-from datetime import datetime, timedelta
 from gymcentral.gc_utils import sanitize_list, json_serializer
-
-from models import Course, Session, ExercisePerformance, Exercise, Level, CourseSubscription
+from models import Indicator, PossibleAnswer
 
 
 __author__ = 'stefano'
@@ -10,8 +8,6 @@ import logging
 import unittest
 
 from google.appengine.ext import testbed
-
-from api_db_utils import APIDB
 
 
 class NDBTestCase(unittest.TestCase):
@@ -32,14 +28,27 @@ class NDBTestCase(unittest.TestCase):
 
 
     def test_snippet(self):
-        club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
-                                 training_type=["balance", "stability"], tags=["test", "trento"])
-        club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
-                                 training_type=["balance", "stability"], tags=["test", "trento"])
-        club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
-                                 training_type=["balance", "stability"], tags=["test", "trento"])
-        clubs = APIDB.get_clubs()
-        print json_serializer(club)
+        ind = Indicator(name="test", description="test", required=True,
+                        possible_answers=[PossibleAnswer(name="a", value="123"),
+                                          PossibleAnswer(name="b", text="bb", value="123")])
+        ind.put()
+        ind2 = Indicator(name="test2", description="test2", required=True,
+                        possible_answers=[PossibleAnswer(name="c", value="545"),
+                                          PossibleAnswer(name="d", text="cc", value="2315")])
+        ind2.put()
+        print Indicator.query().count()
+        l = Indicator.query().fetch()
+        print l
+        print len(l)
+        print sanitize_list(json_serializer(l))
+        # club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
+        # training_type=["balance", "stability"], tags=["test", "trento"])
+        # club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
+        #                          training_type=["balance", "stability"], tags=["test", "trento"])
+        # club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
+        #                          training_type=["balance", "stability"], tags=["test", "trento"])
+        # clubs = APIDB.get_clubs()
+        # print json_serializer(club)
         # course = Course(name="test course", description="test course", club=club.key)
         # course.put()
         # session = Session(name="session test", session_type="JOINT", course=course.key,

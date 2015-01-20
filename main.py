@@ -1,4 +1,7 @@
-from datetime import datetime
+import datetime
+import logging
+
+import webapp2
 
 from api_db_utils import APIDB
 import cfg
@@ -7,24 +10,70 @@ from gymcentral.auth import user_required, GCAuth
 from gymcentral.exceptions import AuthenticationError, NotFoundException
 from gymcentral.gc_utils import json_serializer, sanitize_json, sanitize_list, json_from_paginated_request, \
     json_from_request
+from models import User
 
 
 __author__ = 'stefano tranquillini'
 # check the cfg file, it should not be uploaded!
 app = WSGIApp(config=cfg.API_APP_CFG, debug=cfg.DEBUG)
+APP_NAME = "api-trainee"
 
 
-@app.route("/hw", methods=('GET', ))
+@app.route("/%s/hw" % APP_NAME, methods=('GET', ))
 def hw(req):
     return "hello world!"
 
 
-@app.route("/hw", methods=('POST', ))
+@app.route("/%s/hw" % APP_NAME, methods=('POST', ))
 def hw_post(req):
     return 200, dict(input=json_from_request(req))
 
 
-@app.route('/users/current', methods=('GET',))
+@app.route("/%s/auth/<provider>/<token>" % APP_NAME, methods=('GET',))
+def auth(req, provider, token):
+    # get user infos
+    d_user, token, error = GCAuth.handle_oauth_callback(token, provider)
+    if error:
+        raise AuthenticationError(error)
+    # check if user exists..
+    auth_id = str(provider) + ":" + d_user['id']
+    user = User.get_by_auth_id(auth_id)
+    # create the user..
+    if not user:
+        if provider == 'google':
+            created, user = User.create_user(auth_id, unique_properties=['email'],
+                                             name=d_user['name'],
+                                             nickname="",
+                                             gender=d_user['gender'][0],
+                                             picture=d_user['picture'], avatar="", birthday=datetime.datetime.now(), country="",
+                                             city="",
+                                             language=d_user['locale'], email=d_user['email'], phone="",
+                                             active_club=None)
+        elif provider == 'facebook':
+            created, user = User.create_user(auth_id, unique_properties=['email'],
+                                             name=d_user['name'],
+                                             nickname="",
+                                             gender=d_user['gender'][0],
+                                             picture=("http://graph.facebook.com/%s/picture?type=large" % d_user['id']),
+                                             avatar="",
+                                             birthday=datetime.datetime.now(), country="", city="",
+                                             language=d_user['locale'][0:2], email=d_user['email'], phone="",
+                                             active_club=None)
+        else:
+            raise AuthenticationError("provider not allowed")
+        if not created:
+            logging.error(
+                "something is wrong with user %s with this token %s and this provider %s" % (d_user, token, provider))
+            raise AuthenticationError("something is wrong with your account. Please contact us")
+
+    token = GCAuth.auth_user(user)
+    logging.warning("create a cron job to remove expired tokens")
+    response = webapp2.Response()
+    response.set_cookie('gc_token', token, path='/', secure=False, overwrite=True)
+    return response
+
+
+@app.route('/%s/users/current' % APP_NAME, methods=('GET',))
 @user_required
 def profile(req):
     '''
@@ -39,7 +88,7 @@ def profile(req):
     return sanitize_json(j_user, out)
 
 
-@app.route('/users/current', methods=('PUT',))
+@app.route('/%s/users/current' % APP_NAME, methods=('PUT',))
 @user_required
 def profile_update(req):
     '''
@@ -58,7 +107,7 @@ def profile_update(req):
     return 200, None
 
 
-@app.route('/clubs', methods=('GET',))
+@app.route('/%s/clubs' % APP_NAME, methods=('GET',))
 def club_list(req):
     """
     List of all the clubs, paginated
@@ -99,7 +148,7 @@ def club_list(req):
     return ret
 
 
-@app.route('/clubs/<id_club>', methods=('GET',))
+@app.route('/%s/clubs/<id_club>' % APP_NAME, methods=('GET',))
 def club_details(req, id_club):
     """
     gets the details of a club
@@ -122,7 +171,7 @@ def club_details(req, id_club):
                                   'member_count', 'courses'])
 
 
-@app.route('/clubs/<id>/membership', methods=('GET',))
+@app.route('/%s/clubs/<id>/membership' % APP_NAME, methods=('GET',))
 def club_membership(req, id):
     """
     gets the list of members for a club
@@ -176,7 +225,7 @@ def club_membership(req, id):
     return ret
 
 
-@app.route('/clubs/<id>/courses', methods=('GET',))
+@app.route('/%s/clubs/<id>/courses' % APP_NAME, methods=('GET',))
 def course_list(req, id):
     '''
     Gets the list of courses of a club
@@ -208,7 +257,7 @@ def course_list(req, id):
     return ret
 
 
-@app.route('/courses/<id>', methods=('GET',))
+@app.route('/%s/courses/<id>' % APP_NAME, methods=('GET',))
 @user_required
 def course_detail(req, id):
     '''
@@ -232,7 +281,7 @@ def course_detail(req, id):
                                             "subscriber_count", "session_count"])
 
 
-@app.route('/courses/<id>/subscribers', methods=('GET',))
+@app.route('/%s/courses/<id>/subscribers' % APP_NAME, methods=('GET',))
 @user_required
 def course_subscribers_list(req, id):
     '''
@@ -255,7 +304,7 @@ def course_subscribers_list(req, id):
     return ret
 
 
-@app.route('/courses/<id>/subscription', methods=('GET',))
+@app.route('/%s/courses/<id>/subscription' % APP_NAME, methods=('GET',))
 @user_required
 def course_subscription_detail(req, id):
     '''
@@ -277,7 +326,7 @@ def course_subscription_detail(req, id):
 
 # Training session
 
-@app.route('/courses/<id>/sessions', methods=('GET',))
+@app.route('/%s/courses/<id>/sessions' % APP_NAME, methods=('GET',))
 @user_required
 def course_session_list(req, id):
     '''
@@ -312,9 +361,9 @@ def course_session_list(req, id):
     return ret_list
 
 
-@app.route('/club/<id>/sessions', methods=('GET',))
+@app.route('/%s/club/<id_session>/sessions' % APP_NAME, methods=('GET',))
 @user_required
-def club_session_list(req, id):
+def club_session_list(req, id_session):
     '''
     list of training sessions
     http://docs.gymcentralapi.apiary.io/#reference/training-sessions/training-sessions-list
@@ -323,7 +372,7 @@ def club_session_list(req, id):
     :return: list of the training session
     '''
     # TODO: test
-    club = APIDB.get_club_by_id(id)
+    club = APIDB.get_club_by_id(id_session)
     if not club:
         raise NotFoundException()
     if not APIDB.is_user_subscribed_to_club(req.user, club):
@@ -353,7 +402,7 @@ def club_session_list(req, id):
     # Training session
 
 
-@app.route('sessions/<id>', methods=('GET',))
+@app.route('/%s/sessions/<id_session>' % APP_NAME, methods=('GET',))
 @user_required
 def club_session_detail(req, id_session):
     '''
@@ -379,8 +428,12 @@ def club_session_detail(req, id_session):
         j_activity['level'] = level.level_number
         j_activity['description'] = level.description
         j_activity['source'] = level.source
-        # missing indicators
-        # missing details
+        # test this
+        j_activity['indicators'] = sanitize_list(json_serializer(activity.indicators),
+                                                 allowed=["name", "indicator_type", "description", "possible_answers",
+                                                          "required"])
+        # this is already a json, see docs in the model
+        j_activity['details'] = level.details
         res_list.append(j_activity)
     j_session['activities'] = sanitize_list(res_list,
                                             allowed=['name', 'description', 'level', 'source', 'details', 'indicators'])
