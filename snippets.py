@@ -1,5 +1,6 @@
-from gymcentral.gc_utils import sanitize_list, json_serializer
-from models import Indicator, PossibleAnswer
+from api_db_utils import APIDB
+from gymcentral.gc_utils import json_serializer
+from models import Detail, Level, Exercise
 
 
 __author__ = 'stefano'
@@ -28,26 +29,48 @@ class NDBTestCase(unittest.TestCase):
 
 
     def test_snippet(self):
-        ind = Indicator(name="test", description="test", required=True,
-                        possible_answers=[PossibleAnswer(name="a", value="123"),
-                                          PossibleAnswer(name="b", text="bb", value="123")])
-        ind.put()
-        ind2 = Indicator(name="test2", description="test2", required=True,
-                        possible_answers=[PossibleAnswer(name="c", value="545"),
-                                          PossibleAnswer(name="d", text="cc", value="2315")])
-        ind2.put()
-        print Indicator.query().count()
-        l = Indicator.query().fetch()
-        print l
-        print len(l)
-        print sanitize_list(json_serializer(l))
+        club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
+                                 training_type=["balance", "stability"], tags=["test", "trento"])
+
+        d = Detail(created_for=club.key, name="123", description="12")
+        ds = [dict(detail=d.to_dict(), value=2), dict(d.to_dict(), value=14)]
+        print ds
+        l1 = Level(level_number=1, details=ds)
+        # l2 = Level(level_number=2)
+        # l3 = Level(level_number=3)
+        l1.put()
+        # l2.put()
+        # l3.put()
+        ex = Exercise(name='test', created_for=club.key, list_levels=[l1])
+        ex.put()
+        print json_serializer(ex)
+        # print json_serializer(ex.list_levels)
+        # ind = Indicator(name="test", description="test", required=True,
+        # possible_answers=[PossibleAnswer(name="a", value="123"),
+        # PossibleAnswer(name="b", text="bb", value="123")])
+        #
+        # pa = PossibleAnswer.query().fetch()
+        # print pa
+        # ind.put()
+        # ind2 = Indicator(name="test2", description="test2", required=True,
+        # possible_answers=[PossibleAnswer(name="c", value="545"),
+        # PossibleAnswer(name="d", text="cc", value="2315")])
+        # ind2.put()
+        # print Indicator.query().count()
+        # l = Indicator.query().fetch()
+        # print l
+        # print len(l)
+        # print sanitize_list(json_serializer(l))
         # club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
         # training_type=["balance", "stability"], tags=["test", "trento"])
-        # club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
-        #                          training_type=["balance", "stability"], tags=["test", "trento"])
-        # club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
-        #                          training_type=["balance", "stability"], tags=["test", "trento"])
-        # clubs = APIDB.get_clubs()
+        # club1 = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
+        # training_type=["balance", "stability"], tags=["test", "trento"])
+        # club2 = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
+        # training_type=["balance", "stability"], tags=["test", "trento"])
+        # # clubs = APIDB.get_clubs()
+        # club1.put()
+        # club2.put()
+        # print sanitize_list(APIDB.get_clubs(), ['name'])
         # print json_serializer(club)
         # course = Course(name="test course", description="test course", club=club.key)
         # course.put()

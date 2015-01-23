@@ -146,7 +146,7 @@ class NDBTestCase(unittest.TestCase):
         l = Level(description="this is the level", level_number=10)
         l.put()
 
-        ex = Exercise(name="123", created_for=club.key, list_levels=[l.key, ])
+        ex = Exercise(name="123", created_for=club.key, levels=[l])
         ex.put()
         ex2 = Exercise(name="123", created_for=club.key)
         ex2.put()
@@ -248,7 +248,7 @@ class NDBTestCase(unittest.TestCase):
         l5.put()
         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
                                  training_type=["balance", "stability"], tags=["test", "trento"])
-        ex = Exercise(created_for=club.key, list_levels=[l1.key, l2.key, l3.key, l4.key, l5.key])
+        ex = Exercise(created_for=club.key, levels=[l1, l2, l3, l4, l5])
         ex.put()
         resl = APIDB.get_activity_levels(ex, paginated=True, page=2, size=2)
         self.assertEqual([l3, l4], resl[0], "result of paginated list is wrong")

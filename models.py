@@ -1,4 +1,3 @@
-from _ast import Set
 from datetime import datetime
 
 from gymcentral.gc_models import GCUser, GCModel, GCModelMtoMNoRep
@@ -17,19 +16,19 @@ class User(GCUser):
     def member_of(self):
         return ClubMembership.query(ndb.AND(ClubMembership.member == self.key,
                                             ClubMembership.membership_type == "MEMBER",
-                                            ClubMembership.is_active == True))
+                                            ClubMembership.is_active == True), projection=[ClubMembership.club])
 
     @property
     def trainer_of(self):
         return ClubMembership.query(ndb.AND(ClubMembership.member == self.key,
                                             ClubMembership.membership_type == "TRAINER",
-                                            ClubMembership.is_active == True))
+                                            ClubMembership.is_active == True), projection=[ClubMembership.club])
 
     @property
     def owner_of(self):
         return ClubMembership.query(ndb.AND(ClubMembership.member == self.key,
                                             ClubMembership.membership_type == "OWNER",
-                                            ClubMembership.is_active == True))
+                                            ClubMembership.is_active == True), projection=[ClubMembership.club])
 
     def membership_type(self, club):
         membership = ndb.Key(ClubMembership, ClubMembership.build_id(self.key, club.key)).get()
@@ -38,6 +37,7 @@ class User(GCUser):
 
 class Course(GCModel):
     # TODO write test case for this. should be already covered by methods below
+    # FIXME: type and duration, how to put them
     name = ndb.StringProperty(required=True)
     description = ndb.StringProperty(required=True)
     start_date = ndb.DateTimeProperty(auto_now_add=True, required=True)
@@ -49,15 +49,16 @@ class Course(GCModel):
     def subscribers(self):
         return CourseSubscription.query(ndb.AND(CourseSubscription.course == self.key,
                                                 CourseSubscription.is_active == True,
-                                                CourseSubscription.status == "ACCEPTED"))
+                                                CourseSubscription.status == "ACCEPTED"), projection=[CourseSubscription.member])
 
     @property
     def trainers(self):
         return CourseTrainers.query(ndb.AND(CourseTrainers.course == self.key,
-                                            CourseTrainers.is_active == True))
+                                            CourseTrainers.is_active == True), projection=[CourseTrainers.member])
 
 
 class CourseTrainers(GCModelMtoMNoRep):
+    # Probably can be put as a repeated property, the number of trainers should be limited in a club..
     # http://docs.gymcentralapi.apiary.io/#reference/training-subscription
     # probably is worth switching to this structure http://stackoverflow.com/a/27837999/1257185
     member = ndb.KeyProperty(kind='User', required=True)
@@ -116,21 +117,21 @@ class Club(GCModel):
 
 
     @property
-    def __all_memberships(self):
+    def all_memberships(self):
         return ClubMembership.query(ndb.AND(ClubMembership.club == self.key,
-                                            ClubMembership.is_active == True))
+                                            ClubMembership.is_active == True), projection=[ClubMembership.member])
 
     @property
     def members(self):
-        return self.__all_memberships.filter(ClubMembership.membership_type == "MEMBER")
+        return self.all_memberships.filter(ClubMembership.membership_type == "MEMBER", )
 
     @property
     def trainers(self):
-        return self.__all_memberships.filter(ClubMembership.membership_type == "TRAINER")
+        return self.all_memberships.filter(ClubMembership.membership_type == "TRAINER")
 
     @property
     def owners(self):
-        return self.__all_memberships.filter(ClubMembership.membership_type == "OWNER")
+        return self.all_memberships.filter(ClubMembership.membership_type == "OWNER")
 
 
     # these methods are not used anymore, there's the query()
@@ -193,9 +194,6 @@ class Session(GCModel):
         return len(self.list_exercises)
 
 
-
-
-
 class Source(GCModel):
     source_type = ndb.StringProperty(choices=["VIDEO", "AUDIO", "IMAGE", "TEXT"], required=True)
     hd_link = ndb.StringProperty()
@@ -208,6 +206,11 @@ class Detail(GCModel):
     name = ndb.StringProperty(required=True)
     detail_type = ndb.StringProperty()
     description = ndb.StringProperty(required=True)
+
+    def to_dict(self):
+        result = super(GCModel, self).to_dict()
+        del result['created_for']
+        return result
 
 
 class Level(GCModel):
@@ -233,7 +236,7 @@ class PossibleAnswer(GCModel):
     text = ndb.StringProperty()
     img = ndb.StringProperty()
     value = ndb.StringProperty()
-    answer_type = ndb.StringProperty(choices=["TEXT", "MULTIPLECHOICE", "CHECKBOXES"],default="TEXT")
+    answer_type = ndb.StringProperty(choices=["TEXT", "MULTIPLECHOICE", "CHECKBOXES"], default="TEXT")
 
 
 class Indicator(GCModel):
@@ -246,15 +249,19 @@ class Indicator(GCModel):
 
 class Exercise(GCModel):
     name = ndb.StringProperty()
-    list_levels = ndb.KeyProperty(kind='Level', repeated=True)
+    levels = ndb.StructuredProperty(Level, repeated=True)
     # TODO: exericse belongs to trainers or to a club or what?
     created_for = ndb.KeyProperty(kind='Club', required=True)
-    indicator_list = ndb.KeyProperty(kind="Indicator", repeated=True)
-
-    @property
-    def levels(self):
-        return ndb.get_multi(self.list_levels)
+    # can't be a strucutred property since possible_answers is already a repated structured property
+    indicator_list = ndb.KeyProperty(kind='Indicator', repeated=True)
 
     @property
     def indicators(self):
         return ndb.get_multi(self.indicator_list)
+
+        # in case we need the key of a structured property
+        # def to_dict(self):
+        # result = super(GCModel, self).to_dict()
+        # result['list_levels'] = [l.to_dict() for l in self.list_levels]
+        #     return result
+
