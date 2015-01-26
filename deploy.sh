@@ -8,7 +8,7 @@ sed -i.backup -e 's/DEBUG = True/DEBUG = False/g' cfg.py
 if grep -q "OK" result.test; then
     echo "Tests: ok"
     echo "Updating server"
-#    appcfg.py update .
+    appcfg.py update .
 else
     echo "Error in test cases, cannot update"
 fi

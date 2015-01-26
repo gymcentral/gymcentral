@@ -16,19 +16,19 @@ class User(GCUser):
     def member_of(self):
         return ClubMembership.query(ndb.AND(ClubMembership.member == self.key,
                                             ClubMembership.membership_type == "MEMBER",
-                                            ClubMembership.is_active == True), projection=[ClubMembership.club])
+                                            ClubMembership.is_active == True))
 
     @property
     def trainer_of(self):
         return ClubMembership.query(ndb.AND(ClubMembership.member == self.key,
                                             ClubMembership.membership_type == "TRAINER",
-                                            ClubMembership.is_active == True), projection=[ClubMembership.club])
+                                            ClubMembership.is_active == True))
 
     @property
     def owner_of(self):
         return ClubMembership.query(ndb.AND(ClubMembership.member == self.key,
                                             ClubMembership.membership_type == "OWNER",
-                                            ClubMembership.is_active == True), projection=[ClubMembership.club])
+                                            ClubMembership.is_active == True))
 
     def membership_type(self, club):
         membership = ndb.Key(ClubMembership, ClubMembership.build_id(self.key, club.key)).get()
@@ -49,12 +49,12 @@ class Course(GCModel):
     def subscribers(self):
         return CourseSubscription.query(ndb.AND(CourseSubscription.course == self.key,
                                                 CourseSubscription.is_active == True,
-                                                CourseSubscription.status == "ACCEPTED"), projection=[CourseSubscription.member])
+                                                CourseSubscription.status == "ACCEPTED"))
 
     @property
     def trainers(self):
         return CourseTrainers.query(ndb.AND(CourseTrainers.course == self.key,
-                                            CourseTrainers.is_active == True), projection=[CourseTrainers.member])
+                                            CourseTrainers.is_active == True))
 
 
 class CourseTrainers(GCModelMtoMNoRep):
@@ -119,7 +119,7 @@ class Club(GCModel):
     @property
     def all_memberships(self):
         return ClubMembership.query(ndb.AND(ClubMembership.club == self.key,
-                                            ClubMembership.is_active == True), projection=[ClubMembership.member])
+                                            ClubMembership.is_active == True))
 
     @property
     def members(self):

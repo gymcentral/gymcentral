@@ -6,7 +6,7 @@ from api_db_utils import APIDB
 from gymcentral.auth import GCAuth
 from gymcentral.gc_utils import date_to_js_timestamp
 from main import app
-from models import Course, Level, Exercise, Session, CourseSubscription, ExercisePerformance
+from models import Course, Level, Exercise, Session, CourseSubscription, ExercisePerformance, Indicator, PossibleAnswer
 
 
 __author__ = 'stefano'
@@ -141,6 +141,8 @@ class APIestCase(unittest.TestCase):
     def test_courses(self):
         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
                                  training_type=["balance", "stability"], tags=["test", "trento"])
+
+
         APIDB.add_member_to_club(self.user, club)
         member2 = APIDB.create_user("own:" + "member2", nickname="member2", name="test2", gender="m", avatar="..",
                                     birthday=datetime.now(), country='Italy', city='TN', language='en',
@@ -232,11 +234,13 @@ class APIestCase(unittest.TestCase):
         l4.put()
         l5 = Level(level_number=5)
         l5.put()
-        ex = Exercise(name="123", created_for=club.key, levels=[l1, l2, l3, l4, l5])
+        i = Indicator(name="test", description="123", possible_answers=[PossibleAnswer(name="test")])
+        i.put()
+        ex = Exercise(name="123", created_for=club.key, levels=[l1, l2, l3, l4, l5], indicator_list=[i.key])
         ex.put()
         session = Session(name="session test", session_type="JOINT", course=course.key,
                           start_date=(datetime.now() + timedelta(hours=1)),
-                          end_date=(datetime.now() + timedelta(hours=2)))
+                          end_date=(datetime.now() + timedelta(hours=2)), profile=[[{"activityId": ex.id, "level": 1}]])
         session.put()
         APIDB.add_activity_to_session(session, ex)
         APIDB.add_activity_to_session(session, ex)
@@ -250,49 +254,60 @@ class APIestCase(unittest.TestCase):
         self.app.get('/api-trainee/club/%s/sessions' % club.id, status=401)
         self.app.get('/api-trainee/club/%s/sessions' % club.id, status=404, headers=self.auth_headers)
         APIDB.add_member_to_course(self.user, course, "ACCEPTED")
+
         self.app.get('/api-trainee/club/%s/sessions' % 0, status=404, headers=self.auth_headers)
 
         # ----
-        logging.getLogger().setLevel(logging.DEBUG)
 
         cs = CourseSubscription(id=CourseSubscription.build_id(self.user.key, course.key), member=self.user.key,
                                 course=course.key)
         cs.profile_level = 1
         cs.put()
 
-        performance = ExercisePerformance(user=self.user.key, session=session.key, level=l1.key, )
+        performance = ExercisePerformance(user=self.user.key, session=session.key, level=l1.key)
         performance.put()
-        response = self.app.get('/api-trainee/club/%s/sessions?from=%s' % (club.id, "ciao"), status=400, headers=self.auth_headers)
+        response = self.app.get('/api-trainee/club/%s/sessions?from=%s' % (club.id, "ciao"), status=400,
+                                headers=self.auth_headers)
         print response.json
 
         response = self.app.get('/api-trainee/club/%s/sessions?from=%s&to=%s' % (
-        club.id, date_to_js_timestamp(datetime.now()), date_to_js_timestamp(datetime.now() + timedelta(hours=2))),
+            club.id, date_to_js_timestamp(datetime.now()), date_to_js_timestamp(datetime.now() + timedelta(hours=2))),
                                 headers=self.auth_headers)
         assert response.json['results'][0]['noOfParticipations'] == 1
 
-        # level = Level(level_number=1)
-        # level.put()
-        # self.assertEqual(0, APIDB.session_completeness(self.user, session), "Completeness is not correct")
-        # performance = ExercisePerformance(user=self.user.key, session=session.key, level=level.key)
-        # performance.put()
-        # self.assertEqual(50, APIDB.session_completeness(self.user, session), "Completeness is not correct")
-        # performance = ExercisePerformance(user=self.user.key, session=session.key, level=level.key)
-        # performance.put()
-        # self.assertEqual(50, APIDB.session_completeness(self.user, session), "Completeness is not correct")
-        #
-        # member2 = APIDB.create_user("own:" + "member2", nickname="member2", name="test2", gender="m", avatar="..",
-        # birthday=datetime.now(), country='Italy', city='TN', language='en',
-        # picture='..', email='user2@test.com', phone='2313213', active_club=None,
-        #                             unique_properties=['email'])
-        # self.assertEqual(0, APIDB.session_completeness(member2, session), "Completeness is not correct")
-        #
-        # self.assertTrue(APIDB.user_participated_in_session(member, session))
-        # self.assertFalse(APIDB.user_participated_in_session(member2, session))
-        #
-        # APIDB.rm_activity_from_session(session, ex)
-        # self.assertEqual(1, session.activity_count, "Activity are incorrect")
+        self.app.get('/api-trainee/sessions/%s' % session.id, status=401)
+        APIDB.rm_member_from_course(self.user, course)
+        self.app.get('/api-trainee/sessions/%s' % session.id, status=404, headers=self.auth_headers)
+        APIDB.add_member_to_course(self.user, course)
+        self.app.get('/api-trainee/sessions/%s' % 0, status=404, headers=self.auth_headers)
 
-        logging.getLogger().setLevel(logging.CRITICAL)
+        logging.getLogger().setLevel(logging.DEBUG)
+        response = self.app.get('/api-trainee/sessions/%s' % session.id, headers=self.auth_headers)
+        assert response.json['activities'][0]['indicators'][0]['possibleAnswers'][0]['name'] == 'test'
 
-        if __name__ == '__main__':
-            unittest.main()
+    # level = Level(level_number=1)
+    # level.put()
+    # self.assertEqual(0, APIDB.session_completeness(self.user, session), "Completeness is not correct")
+    # performance = ExercisePerformance(user=self.user.key, session=session.key, level=level.key)
+    # performance.put()
+    # self.assertEqual(50, APIDB.session_completeness(self.user, session), "Completeness is not correct")
+    # performance = ExercisePerformance(user=self.user.key, session=session.key, level=level.key)
+    # performance.put()
+    # self.assertEqual(50, APIDB.session_completeness(self.user, session), "Completeness is not correct")
+    #
+    # member2 = APIDB.create_user("own:" + "member2", nickname="member2", name="test2", gender="m", avatar="..",
+    # birthday=datetime.now(), country='Italy', city='TN', language='en',
+    # picture='..', email='user2@test.com', phone='2313213', active_club=None,
+    # unique_properties=['email'])
+    # self.assertEqual(0, APIDB.session_completeness(member2, session), "Completeness is not correct")
+    #
+    # self.assertTrue(APIDB.user_participated_in_session(member, session))
+    # self.assertFalse(APIDB.user_participated_in_session(member2, session))
+    #
+    # APIDB.rm_activity_from_session(session, ex)
+    # self.assertEqual(1, session.activity_count, "Activity are incorrect")
+
+    logging.getLogger().setLevel(logging.CRITICAL)
+
+    if __name__ == '__main__':
+        unittest.main()

@@ -1,5 +1,4 @@
 import datetime
-import logging
 
 from google.appengine.ext import ndb
 from google.appengine.ext.ndb.key import Key
@@ -36,8 +35,8 @@ class APIDB():
         """
         created, ret = cls.model_user.create_user(auth_id, unique_properties, **user_values)
         if not created:
-            logging.error("Error with user %s", ret)
-            raise ServerError("Error with user %s" % ret)
+            # logging.error("Error with user %s", ret)
+            raise ServerError()
         return ret
 
     @classmethod
@@ -52,14 +51,17 @@ class APIDB():
     # [START] User
     @classmethod
     def get_user_member_of(cls, user, **kwargs):
+        kwargs['projection'] = 'club'
         return cls.__get(user.member_of, **kwargs)
 
     @classmethod
     def get_user_owner_of(cls, user, **kwargs):
+        kwargs['projection'] = 'club'
         return cls.__get(user.owner_of, **kwargs)
 
     @classmethod
     def get_user_trainer_of(cls, user, **kwargs):
+        kwargs['projection'] = 'club'
         return cls.__get(user.trainer_of, **kwargs)
 
     # [END] User
@@ -80,9 +82,9 @@ class APIDB():
     # Probalby we want something more prcise?
     def club_query(cls, query=None, **kwargs):
         if query:
-            return cls.__get(cls.model_club.query(), **kwargs)
-        else:
             return cls.__get(cls.model_club.query(query), **kwargs)
+        else:
+            return cls.__get(cls.model_club.query(), **kwargs)
 
     @classmethod
     def get_club_by_id(cls, id_club):
@@ -94,18 +96,22 @@ class APIDB():
 
     @classmethod
     def get_club_all_members(cls, club, **kwargs):
+        kwargs['projection'] = 'member'
         return cls.__get(club.all_memberships, **kwargs)
 
     @classmethod
     def get_club_members(cls, club, **kwargs):
+        kwargs['projection'] = 'member'
         return cls.__get(club.members, **kwargs)
 
     @classmethod
     def get_club_trainers(cls, club, **kwargs):
+        kwargs['projection'] = 'member'
         return cls.__get(club.trainers, **kwargs)
 
     @classmethod
     def get_club_owners(cls, club, **kwargs):
+        kwargs['projection'] = 'member'
         return cls.__get(club.owners, **kwargs)
 
 
@@ -178,12 +184,15 @@ class APIDB():
                              for course in courses]
         real_list = [s.course for s in ndb.get_multi(subscription_keys) if s is not None]
         if not real_list:
-            return [], 0
-        sessions = cls.model_session.query(cls.model_session.course.IN(real_list),
-                                           cls.model_session.start_date >= date_from,
-                                           cls.model_session.start_date <= date_to)
+            return cls.__get([], **kwargs)
+        sessions = cls.model_session.query()
+        sessions = sessions.filter(cls.model_session.course.IN(real_list))
+        if date_from:
+            sessions = sessions.filter(cls.model_session.start_date >= date_from)
+        if date_to:
+            sessions = sessions.filter(cls.model_session.start_date <= date_to)
         if session_type:
-            sessions.filter(cls.model_session.session_type == session_type)
+            sessions = sessions.filter(cls.model_session.session_type == session_type)
         return cls.__get(sessions, **kwargs)
 
 
@@ -230,7 +239,10 @@ class APIDB():
 
     @classmethod
     def rm_trainer_from_course(cls, user, course):
-        cls.rm_member_from_course(user, course)
+        relation = ndb.Key(cls.model_course_trainers, cls.model_course_trainers.build_id(user.key, course.key)).get()
+        if relation:
+            relation.is_active = False
+            relation.put()
 
 
     # @classmethod
@@ -250,6 +262,7 @@ class APIDB():
 
     @classmethod
     def get_course_subscribers(cls, course, **kwargs):
+        kwargs['projection'] = 'member'
         return cls.__get(course.subscribers, **kwargs)
 
 
@@ -260,7 +273,7 @@ class APIDB():
 
     @classmethod
     def get_course_trainers(cls, course, **kwargs):
-
+        kwargs['projection'] = 'member'
         return cls.__get(course.trainers, **kwargs)
 
 
@@ -298,11 +311,11 @@ class APIDB():
 
     @classmethod
     def session_completeness(cls, user, session):
-        # FIXME is this a value sent by the trainee or comptued by me?
         completed_ex = cls.model_exercise_performance.query(ExercisePerformance.session == session.key,
                                                             cls.model_exercise_performance.user == user.key,
                                                             projection=[cls.model_exercise_performance.level],
                                                             group_by=[cls.model_exercise_performance.level]).count()
+        # FIXME: this is the average of completeness of all the exericses.
         return float(completed_ex) / float(session.activity_count) * 100.0
 
 
@@ -333,7 +346,7 @@ class APIDB():
         session_profile = session.profile
         user_level_assigned = APIDB.get_course_subscription(session.course, user).profile_level
         if user_level_assigned > len(session_profile):
-            return None
+            raise ServerError("Profile not found ")
 
         level_profile = session_profile[user_level_assigned - 1]
         activity_level = None
@@ -348,19 +361,19 @@ class APIDB():
             if level['activityId'] == activity.id:
                 activity_level = int(level['level'])
         if not activity_level:
-            return None
+            raise ServerError("Level for this activity cannot be found")
         levels = activity.levels
         # this searches for the correct level
         for level in levels:
             if level.level_number == activity_level:
                 return level
-        return None
+        raise ServerError("Level for this activity cannot be found")
 
 
     # [END] Exercise
 
     @classmethod
-    def __get(cls, o, size=-1, paginated=False, page=1, count_only=False):
+    def __get(cls, o, size=-1, paginated=False, page=1, count_only=False, projection=None ):  # pragma: no cover
         """
         Implements the get
         e.g.
@@ -387,8 +400,10 @@ class APIDB():
                 # if it's a query, then use fetch
                 # if isinstance(o, ndb.Query):
                 if size == -1:
-                    return cls.__get_relation_if_needed(o.fetch())
-                return cls.__get_relation_if_needed(o.fetch(size))
+                    return cls.__get_relation_if_needed(o.fetch(), projection)
+                if size == 0:
+                    return []
+                return cls.__get_relation_if_needed(o.fetch(size), projection)
                 # else:
                 # logging.debug("Type %s %s", type(o), o)
                 # raise Exception("Type not found %s %s" % (type(o), o))
@@ -405,7 +420,7 @@ class APIDB():
                 offset = (page - 1) * size
                 # NOTE: this is slower then using the cursor
                 # http://youtu.be/xZsxWn58pS0?t=51m9s
-                data = cls.__get_relation_if_needed(o.fetch(size, offset=offset))
+                data = cls.__get_relation_if_needed(o.fetch(size, offset=offset), projection)
                 return data, o.count()
         elif type(o) == list:
             # in case it's a list
@@ -427,7 +442,7 @@ class APIDB():
 
 
     @classmethod
-    def __get_multi_if_needed(cls, l):
+    def __get_multi_if_needed(cls, l):  # pragma: no cover
         '''
         if it's a list of keys then do a get multi
         :param l:
@@ -440,27 +455,21 @@ class APIDB():
 
 
     @classmethod
-    def __get_relation_if_needed(cls, result):
+    def __get_relation_if_needed(cls, result, projection):  # pragma: no cover
         '''
         This checks if the query is a relations query.
-        *** NOTE ***
-        I used projection for relationship queries in order to extract the relation.
-        it works for now, in future it may brake.
-        so probably is worth to make this call explicit.
         :param result:
         :return:
         '''
+        if not projection:
+            return result
         if not result:
             return result
-        if hasattr(result[0], '_projection') and len(result[0]._projection):
-            logging.debug("%s ", result[0])
-            return cls.__get_relation(result, result[0]._projection[0])
-        else:
-            return result
+        return cls.__get_relation(result, projection)
 
 
     @classmethod
-    def __get_relation(cls, result, field):
+    def __get_relation(cls, result, field):  # pragma: no cover
         '''
         it retrives the results from the relation.
         :param result:
@@ -483,6 +492,7 @@ class APIDB():
         # retreive all the users
         keys = [r.__getattribute__(field) for r in relations]
         res = ndb.get_multi(keys)
+
         # if paginated return the total, otherwise just the items
         if total:
             # paginated

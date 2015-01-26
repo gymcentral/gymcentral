@@ -20,6 +20,18 @@ app = WSGIApp(config=cfg.API_APP_CFG, debug=cfg.DEBUG)
 APP_NAME = "api-trainee"
 
 
+@app.route("/api-admin/delete-tokens", methods=('GET',))
+def delete_auth(req):
+    delta = datetime.timedelta(seconds=int(cfg.AUTH_TOKEN_MAX_AGE))
+    print delta
+    expiredTokens = User.token_model.query(
+        User.token_model.created <= (datetime.datetime.utcnow() - delta))
+    # delete the tokens in bulks of 100:
+    while expiredTokens.count() > 0:
+        keys = expiredTokens.fetch(100, keys_only=True)
+        ndb.delete_multi(keys)
+
+
 @app.route("/%s/hw" % APP_NAME, methods=('GET', ))
 def hw(req):
     return "hello world!"
@@ -80,9 +92,11 @@ def auth(req, provider, token):  # pragma: no cover
     token = GCAuth.auth_user_token(user)
     logging.warning("create a cron job to remove expired tokens")
     response = webapp2.Response(content_type='application/json', charset='UTF-8')
-    response.set_cookie('gc_token', GCAuth.get_secure_cookie(token), secure=False, domain="/", overwrite=True,
-                        expires=app.config.AUTH_TOKEN_MAX_AGE)
-    return GCAuth.get_token(token)
+    cookie = GCAuth.get_secure_cookie(token)
+    response.set_cookie('gc_token', cookie, secure=False,
+                        max_age=int(cfg.AUTH_TOKEN_MAX_AGE), domain="/")
+    response.write(GCAuth.get_token(token))
+    return response
 
 
 @app.route('/%s/users/current' % APP_NAME, methods=('GET',))
@@ -141,7 +155,7 @@ def club_list(req):
     # if user and filter are true, then get from the clubs he's member of
     if user_filter:
         # get the user, just in case
-        user = GCAuth.get_user_or_none(req)
+        user, ts = GCAuth.get_user_or_none(req)
         if user:
             clubs, total = APIDB.get_user_member_of(user, paginated=True, page=page, size=size)
         else:
@@ -321,10 +335,10 @@ def course_subscribers_list(req, id_course):
 # :param req: req object
 # :param id: course id
 # :return: list of subscribers, only nickname and avatar
-#     '''
-#     # TODO: test
-#     course = APIDB.get_course_by_id(id_course)
-#     if not course:
+# '''
+# # TODO: test
+# course = APIDB.get_course_by_id(id_course)
+# if not course:
 #         raise NotFoundException()
 #     subscription = APIDB.get_course_subscription(course, req.user)
 #     if not subscription:
@@ -446,8 +460,9 @@ def club_session_detail(req, id_session):
         res_list.append(j_activity)
     j_session['activities'] = sanitize_list(res_list,
                                             allowed=['name', 'description', 'level', 'source', 'details', 'indicators'])
+    # there should be 'type',
     res = sanitize_json(j_session,
-                        allowed=['id', 'name', 'type', 'status', 'start_date', 'end_date', 'no_of_participants',
+                        allowed=['id', 'name', 'status', 'start_date', 'end_date', 'no_of_participants',
                                  'activities'])
     return res
 

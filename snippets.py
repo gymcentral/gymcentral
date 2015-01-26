@@ -1,6 +1,4 @@
 from api_db_utils import APIDB
-from gymcentral.gc_utils import json_serializer
-from models import Detail, Level, Exercise
 
 
 __author__ = 'stefano'
@@ -32,18 +30,18 @@ class NDBTestCase(unittest.TestCase):
         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
                                  training_type=["balance", "stability"], tags=["test", "trento"])
 
-        d = Detail(created_for=club.key, name="123", description="12")
-        ds = [dict(detail=d.to_dict(), value=2), dict(d.to_dict(), value=14)]
-        print ds
-        l1 = Level(level_number=1, details=ds)
-        # l2 = Level(level_number=2)
-        # l3 = Level(level_number=3)
-        l1.put()
-        # l2.put()
-        # l3.put()
-        ex = Exercise(name='test', created_for=club.key, list_levels=[l1])
-        ex.put()
-        print json_serializer(ex)
+        # d = Detail(created_for=club.key, name="123", description="12")
+        # ds = [dict(detail=d.to_dict(), value=2), dict(d.to_dict(), value=14)]
+        # print ds
+        # l1 = Level(level_number=1, details=ds)
+        # # l2 = Level(level_number=2)
+        # # l3 = Level(level_number=3)
+        # l1.put()
+        # # l2.put()
+        # # l3.put()
+        # ex = Exercise(name='test', created_for=club.key, list_levels=[l1])
+        # ex.put()
+        # print json_serializer(ex)
         # print json_serializer(ex.list_levels)
         # ind = Indicator(name="test", description="test", required=True,
         # possible_answers=[PossibleAnswer(name="a", value="123"),
@@ -61,8 +59,8 @@ class NDBTestCase(unittest.TestCase):
         # print l
         # print len(l)
         # print sanitize_list(json_serializer(l))
-        # club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
-        # training_type=["balance", "stability"], tags=["test", "trento"])
+        club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
+                                 training_type=["balance", "stability"], tags=["test", "trento"])
         # club1 = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
         # training_type=["balance", "stability"], tags=["test", "trento"])
         # club2 = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
@@ -75,12 +73,14 @@ class NDBTestCase(unittest.TestCase):
         # course = Course(name="test course", description="test course", club=club.key)
         # course.put()
         # session = Session(name="session test", session_type="JOINT", course=course.key,
-        #                   start_date=(datetime.now() - timedelta(hours=2)),
+        # start_date=(datetime.now() - timedelta(hours=2)),
         #                   end_date=(datetime.now() - timedelta(minutes=1)))
         # session.put()
         #
-        # member = APIDB.create_user("own:" + "member", username="member", fname="test", sname="test", avatar="..",
-        #                            unique_properties=['username'])
+        member = APIDB.create_user("own:" + "member", username="member", fname="test", sname="test", avatar="..",
+                                   unique_properties=['username'])
+        APIDB.add_member_to_club(member,club)
+        print APIDB.get_club_members(club)
         #
         # level = Level()
         # level.put()

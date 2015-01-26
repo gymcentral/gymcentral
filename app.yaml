@@ -9,6 +9,10 @@ handlers:
   static_files: favicon.ico
   upload: favicon\.ico
 
+- url: /api-admin/delete-tokens
+  script: main.app
+  login: admin
+
 - url: /api-trainee/.*
   script: main.app
 
