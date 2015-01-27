@@ -1,5 +1,6 @@
 import datetime
 import logging
+import logging.config
 
 from google.appengine.ext import ndb
 import webapp2
@@ -17,13 +18,18 @@ from models import User
 __author__ = 'stefano tranquillini'
 # check the cfg file, it should not be uploaded!
 app = WSGIApp(config=cfg.API_APP_CFG, debug=cfg.DEBUG)
-APP_NAME = "api-trainee"
+APP_TRAINEE = "api/trainee"
+APP_ADMIN = "api/admin"
+APP_COACH = "api/coach"
 
 
-@app.route("/api-admin/delete-tokens", methods=('GET',))
-def delete_auth(req):
+logging.config.fileConfig('logging.conf')
+logger = logging.getLogger('myLogger')
+
+
+@app.route("/%s/delete-tokens"% APP_ADMIN, methods=('GET',))
+def delete_auth(req):  # pragma: no cover
     delta = datetime.timedelta(seconds=int(cfg.AUTH_TOKEN_MAX_AGE))
-    print delta
     expiredTokens = User.token_model.query(
         User.token_model.created <= (datetime.datetime.utcnow() - delta))
     # delete the tokens in bulks of 100:
@@ -32,17 +38,19 @@ def delete_auth(req):
         ndb.delete_multi(keys)
 
 
-@app.route("/%s/hw" % APP_NAME, methods=('GET', ))
+@app.route("/%s/hw" % APP_ADMIN, methods=('GET', ))
 def hw(req):
+    logger.debug("hello world")
     return "hello world!"
 
 
-@app.route("/%s/hw" % APP_NAME, methods=('POST', ))
+@app.route("/%s/hw" % APP_ADMIN, methods=('POST', ))
 def hw_post(req):
+    logger.info("%s"%json_from_request(req))
     return 200, dict(input=json_from_request(req))
 
 
-@app.route("/%s/auth/<provider>/<token>" % APP_NAME, methods=('GET',))
+@app.route("/%s/auth/<provider>/<token>" % APP_TRAINEE, methods=('GET',))
 def auth(req, provider, token):  # pragma: no cover
     # the pragma no cover is to skip the testing on this method, which can't be tested
     # get user infos
@@ -83,14 +91,14 @@ def auth(req, provider, token):  # pragma: no cover
         else:
             raise AuthenticationError("provider not allowed")
         if not created:
-            logging.error(
+            logger.error(
                 "something is wrong with user %s with this token %s and this provider %s - unique %s" % (
                     d_user, token, provider, user))
             raise AuthenticationError(
                 "Something is wrong with your account, these properties must be unique %s." % user)
 
     token = GCAuth.auth_user_token(user)
-    logging.warning("create a cron job to remove expired tokens")
+    logger.warning("create a cron job to remove expired tokens")
     response = webapp2.Response(content_type='application/json', charset='UTF-8')
     cookie = GCAuth.get_secure_cookie(token)
     response.set_cookie('gc_token', cookie, secure=False,
@@ -99,7 +107,7 @@ def auth(req, provider, token):  # pragma: no cover
     return response
 
 
-@app.route('/%s/users/current' % APP_NAME, methods=('GET',))
+@app.route('/%s/users/current' % APP_TRAINEE, methods=('GET',))
 @user_required
 def profile(req):
     '''
@@ -113,7 +121,7 @@ def profile(req):
     return sanitize_json(req.user, out)
 
 
-@app.route('/%s/users/current' % APP_NAME, methods=('PUT',))
+@app.route('/%s/users/current' % APP_TRAINEE, methods=('PUT',))
 @user_required
 def profile_update(req):
     '''
@@ -122,24 +130,13 @@ def profile_update(req):
     :return: profile of the current user
     '''
     j_req = json_from_request(req)
-    user = req.user
-    NOT_ALLOWED = ['id']
-
-    for key, value in j_req.iteritems():
-        if key in NOT_ALLOWED:
-            raise BadParameters(key)
-        if hasattr(user, key):
-            try:
-                setattr(user, key, value)
-            except:
-                raise BadParameters(key)
-        else:
-            raise BadParameters(key)
-    user.put()
-    return 200, None
+    update, user = APIDB.update_user(req.user, **j_req)
+    out = ['id', 'name', 'nickname', 'gender', 'picture', 'avatar', 'birthday', 'country', 'city', 'language',
+       'email', 'phone', 'active_club']
+    return sanitize_json(user, out)
 
 
-@app.route('/%s/clubs' % APP_NAME, methods=('GET',))
+@app.route('/%s/clubs' % APP_TRAINEE, methods=('GET',))
 def club_list(req):
     """
     List of all the clubs, paginated
@@ -155,7 +152,7 @@ def club_list(req):
     # if user and filter are true, then get from the clubs he's member of
     if user_filter:
         # get the user, just in case
-        user, ts = GCAuth.get_user_or_none(req)
+        user = GCAuth.get_user_or_none(req)
         if user:
             clubs, total = APIDB.get_user_member_of(user, paginated=True, page=page, size=size)
         else:
@@ -169,7 +166,7 @@ def club_list(req):
     for club in clubs:
         j_club = club.to_dict()
         j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
-        j_club['course_count'] = 0  # APIDB.get_club_courses(club,count_only=True)
+        j_club['course_count'] = APIDB.get_club_courses(club,count_only=True)
         j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['name', 'picture'])
         items.append(j_club)
     ret['results'] = sanitize_list(items,
@@ -180,7 +177,7 @@ def club_list(req):
     return ret
 
 
-@app.route('/%s/clubs/<id_club>' % APP_NAME, methods=('GET',))
+@app.route('/%s/clubs/<id_club>' % APP_TRAINEE, methods=('GET',))
 def club_details(req, id_club):
     """
     gets the details of a club
@@ -196,13 +193,13 @@ def club_details(req, id_club):
     j_club = club.to_dict()
     j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
     j_club['courses'] = sanitize_list(APIDB.get_club_courses(club),
-                                      ['name', 'start_date', 'end_date'])
+                                      ['name', 'start_date', 'end_date', 'course_type'])
     j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['name', 'picture'])
     return sanitize_json(j_club, ['id', 'name', 'description', 'url', 'creation_date', 'is_open', 'owners',
                                   'member_count', 'courses'])
 
 
-@app.route('/%s/clubs/<id_club>/membership' % APP_NAME, methods=('GET',))
+@app.route('/%s/clubs/<id_club>/membership' % APP_TRAINEE, methods=('GET',))
 def club_membership(req, id_club):
     """
     gets the list of members for a club
@@ -248,7 +245,7 @@ def club_membership(req, id_club):
     return dict(results=l_users, total=total)
 
 
-@app.route('/%s/clubs/<id_club>/courses' % APP_NAME, methods=('GET',))
+@app.route('/%s/clubs/<id_club>/courses' % APP_TRAINEE, methods=('GET',))
 def course_list(req, id_club):
     '''
     Gets the list of courses of a club
@@ -270,8 +267,12 @@ def course_list(req, id_club):
         j_course["trainers"] = sanitize_list(APIDB.get_course_trainers(course), allowed=["id", "name", "picture"])
         j_course["subscriber_count"] = APIDB.get_course_subscribers(course, count_only=True)
         j_course["session_count"] = APIDB.get_course_sessions(course, count_only=True)
-        res_course = sanitize_json(j_course, allowed=["id", "name", "description", "start_date", "end_date", "trainers",
-                                                      "subscriber_count", "session_count"])
+        allowed = ["id", "name", "description", "trainers", "subscriber_count", "session_count", "course_type"]
+        if course.course_type == "SCHEDULED":
+            allowed += ["start_date", "end_date"]
+        elif course.course_type == "PROGRAM":
+            allowed += ["week_no", "day_no"]
+        res_course = sanitize_json(j_course, allowed=allowed)
         res_courses.append(res_course)
     ret = {}
     ret['results'] = res_courses
@@ -279,7 +280,7 @@ def course_list(req, id_club):
     return ret
 
 
-@app.route('/%s/courses/<id_course>' % APP_NAME, methods=('GET',))
+@app.route('/%s/courses/<id_course>' % APP_TRAINEE, methods=('GET',))
 @user_required
 def course_detail(req, id_course):
     '''
@@ -298,12 +299,16 @@ def course_detail(req, id_course):
     j_course = course.to_dict()
     j_course["trainers"] = sanitize_list(APIDB.get_course_trainers(course), allowed=["id", "name", "picture"])
     j_course["subscriber_count"] = APIDB.get_course_subscribers(course, count_only=True)
-    j_course["session_count"] = -1  # APIDB.get_sessions(course, count_only=True)
-    return sanitize_json(j_course, allowed=["id", "name", "description", "start_date", "end_date", "trainers",
-                                            "subscriber_count", "session_count"])
+    j_course["session_count"] = APIDB.get_course_sessions(course, count_only=True)
+    allowed = ["id", "name", "description", "trainers", "subscriber_count", "session_count", "course_type"]
+    if course.course_type == "SCHEDULED":
+        allowed += ["start_date", "end_date"]
+    elif course.course_type == "PROGRAM":
+        allowed += ["week_no", "day_no"]
+    return sanitize_json(j_course, allowed=allowed)
 
 
-@app.route('/%s/courses/<id_course>/subscribers' % APP_NAME, methods=('GET',))
+@app.route('/%s/courses/<id_course>/subscribers' % APP_TRAINEE, methods=('GET',))
 @user_required
 def course_subscribers_list(req, id_course):
     '''
@@ -326,29 +331,29 @@ def course_subscribers_list(req, id_course):
     return ret
 
 
-# @app.route('/%s/courses/<id_course>/subscription' % APP_NAME, methods=('GET',))
+# @app.route('/%s/courses/<id_course>/subscription' % APP_TRAINEE, methods=('GET',))
 # @user_required
 # def course_subscription_detail(req, id_course):
 # '''
 # Gets the subscription detail of the logged user for that precise course
 # http://docs.gymcentralapi.apiary.io/#reference/training-subscription/training-subscription/training-subscription
-# :param req: req object
-# :param id: course id
-# :return: list of subscribers, only nickname and avatar
-# '''
-# # TODO: test
-# course = APIDB.get_course_by_id(id_course)
-# if not course:
-#         raise NotFoundException()
+#     :param req: req object
+#     :param id: course id
+#     :return: list of subscribers, only nickname and avatar
+#     '''
+#     # TODO: test
+#     course = APIDB.get_course_by_id(id_course)
+#     if not course:
+#     raise NotFoundException()
 #     subscription = APIDB.get_course_subscription(course, req.user)
-#     if not subscription:
-#         raise NotFoundException()
-#     return sanitize_json(subscription, hidden=['member', 'course', 'is_active'])
+#         if not subscription:
+#             raise NotFoundException()
+#         return sanitize_json(subscription, hidden=['member', 'course', 'is_active'])
 
 
 # Training session
 
-@app.route('/%s/courses/<id_course>/sessions' % APP_NAME, methods=('GET',))
+@app.route('/%s/courses/<id_course>/sessions' % APP_TRAINEE, methods=('GET',))
 @user_required
 def course_session_list(req, id_course):
     '''
@@ -380,7 +385,7 @@ def course_session_list(req, id_course):
     return dict(total=total, results=res_list)
 
 
-@app.route('/%s/club/<id_club>/sessions' % APP_NAME, methods=('GET',))
+@app.route('/%s/clubs/<id_club>/sessions' % APP_TRAINEE, methods=('GET',))
 @user_required
 def club_session_list(req, id_club):
     '''
@@ -420,13 +425,14 @@ def club_session_list(req, id_club):
         course = session.course.get()
         res_obj['course_id'] = course.id
         res_obj['course_name'] = course.name
+        # no edist here, since the data on the type are already removed
         res_list.append(sanitize_json(res_obj, hidden=['course', 'list_exercises']))
     return dict(total=total, results=res_list)
 
     # Training session
 
 
-@app.route('/%s/sessions/<id_session>' % APP_NAME, methods=('GET',))
+@app.route('/%s/sessions/<id_session>' % APP_TRAINEE, methods=('GET',))
 @user_required
 def club_session_detail(req, id_session):
     '''
@@ -458,12 +464,19 @@ def club_session_detail(req, id_session):
         # this is already a json, see docs in the model
         j_activity['details'] = level.details
         res_list.append(j_activity)
+
     j_session['activities'] = sanitize_list(res_list,
                                             allowed=['name', 'description', 'level', 'source', 'details', 'indicators'])
     # there should be 'type',
+    allowed = ['id', 'name', 'status', 'start_date', 'end_date', 'no_of_participants',
+               'activities']
+    course_type = session.course.get().course_type
+    if course_type == "SCHEDULED":
+        allowed += ["start_date", "end_date"]
+    elif course_type == "PROGRAM":
+        allowed += ["week_no", "day_no"]
     res = sanitize_json(j_session,
-                        allowed=['id', 'name', 'status', 'start_date', 'end_date', 'no_of_participants',
-                                 'activities'])
+                        allowed=allowed)
     return res
 
     # Training session

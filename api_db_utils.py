@@ -5,7 +5,7 @@ from google.appengine.ext.ndb.key import Key
 from google.appengine.ext.ndb.query import Query
 
 import cfg
-from gymcentral.exceptions import ServerError
+from gymcentral.exceptions import ServerError, BadParameters
 import models
 from models import ExercisePerformance
 
@@ -40,13 +40,21 @@ class APIDB():
         return ret
 
     @classmethod
+    def update_user(cls, user, not_allowed=None, **user_values):
+        """
+        Update a user
+        :param user:
+        :param not_allowed:
+        :param user_values:
+        :return:
+        """
+        return cls.__update(user, not_allowed=not_allowed, **user_values)
+
+
+    @classmethod
     def get_user_by_id(cls, id_user):
         return cls.model_user.get_by_id(id_user)
 
-    @staticmethod
-    def __create(model, **args):
-        model.populate(**args)
-        model.put()
 
     # [START] User
     @classmethod
@@ -372,8 +380,32 @@ class APIDB():
 
     # [END] Exercise
 
+    @staticmethod
+    def __create(model, **args):
+        model.populate(**args)
+        model.put()
+
+    @staticmethod
+    def __update(model, not_allowed=None, **args):
+        if not not_allowed:
+            not_allowed = ['id']
+        else:
+            not_allowed += ['id']
+        for key, value in args.iteritems():
+            if key in not_allowed:
+                raise BadParameters(key)
+            if hasattr(model, key):
+                try:
+                    setattr(model, key, value)
+                except:
+                    raise BadParameters(key)
+            else:
+                raise BadParameters(key)
+        model.put()
+        return True, model
+
     @classmethod
-    def __get(cls, o, size=-1, paginated=False, page=1, count_only=False, projection=None ):  # pragma: no cover
+    def __get(cls, o, size=-1, paginated=False, page=1, count_only=False, projection=None):  # pragma: no cover
         """
         Implements the get
         e.g.
@@ -490,7 +522,7 @@ class APIDB():
             # it's paginated
             relations, total = result
         # retreive all the users
-        keys = [r.__getattribute__(field) for r in relations]
+        keys = [getattr(r, field) for r in relations]
         res = ndb.get_multi(keys)
 
         # if paginated return the total, otherwise just the items

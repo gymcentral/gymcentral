@@ -1,4 +1,5 @@
 from datetime import datetime
+from google.appengine.api.datastore_errors import BadValueError
 
 from gymcentral.gc_models import GCUser, GCModel, GCModelMtoMNoRep
 
@@ -40,6 +41,7 @@ class Course(GCModel):
     # FIXME: type and duration, how to put them
     name = ndb.StringProperty(required=True)
     description = ndb.StringProperty(required=True)
+    course_type = ndb.StringProperty(choices=['SCHEDULED', 'PROGRAM', 'FREE'], required=True, default="SCHEDULED")
     start_date = ndb.DateTimeProperty(auto_now_add=True, required=True)
     end_date = ndb.DateTimeProperty(auto_now_add=True, required=True)
     club = ndb.KeyProperty('Club', required=True)
@@ -148,38 +150,70 @@ class Club(GCModel):
         return cls.query(cls.training_type.IN(training)), kwargs
 
 
+
+
 class Session(GCModel):
     name = ndb.StringProperty(required=True)
     url = ndb.StringProperty(required=False, default="")
     session_type = ndb.StringProperty(choices=["LIVE", "JOINT", "SINGLE"], required=True)
-    start_date = ndb.DateTimeProperty(auto_now_add=False, required=True)
-    end_date = ndb.DateTimeProperty(auto_now_add=False, required=True)
+    # only if schedule
+    start_date = ndb.DateTimeProperty(auto_now_add=False)
+    end_date = ndb.DateTimeProperty(auto_now_add=False)
+    # only if program
+    week_no = ndb.IntegerProperty()
+    day_no = ndb.IntegerProperty()
     canceled = ndb.BooleanProperty(default=False, required=True)
     course = ndb.KeyProperty(kind="Course", required=True)
     list_exercises = ndb.KeyProperty(kind="Exercise", repeated=True)
     profile = ndb.JsonProperty()
     meta_data = ndb.JsonProperty()
 
+    def to_dict(self):
+        result = super(Session, self).to_dict()
+        course = self.course.get().course_type
+        if course != "SCHEDULED":
+            del result['start_date']
+            del result['end_date']
+        if course != "PROGRAM":
+            del result['week_no']
+            del result['day_no']
+        return result
+
 
     @property
     def status(self):
         if self.canceled:
             return "CANCELED"
-        now = datetime.now()
-        if now < self.start_date:
-            return "UPCOMING"
-        elif now > self.end_date:
-            return "FINISHED"
-        else:
-            return "ONGOING"
+        course = self.course.get().course_type
+        if course == "SCHEDULED":
+            now = datetime.now()
+            if now < self.start_date:
+                return "UPCOMING"
+            elif now > self.end_date:
+                return "FINISHED"
+        return "ONGOING"
+
+    def _pre_put_hook(self):
+        course = self.course.get()
+        if course.course_type == "SCHEDULED":
+            if not self.start_date:
+                raise BadValueError("Entity has uninitialized properties: start_date")
+            if not self.end_date:
+                raise BadValueError("Entity has uninitialized properties: end_date")
+        if course.course_type == "PROGRAM":
+            if not self.week_no:
+                raise BadValueError("Entity has uninitialized properties: week_no")
+            if not self.day_no:
+                raise BadValueError("Entity has uninitialized properties: day_no")
 
     def _post_put_hook(self, future):
         # check if startdate or and enddate are outside course time, then update course.
         course = self.course.get()
-        if self.start_date < course.start_date:
-            course.start_date = self.start_date
-        if self.end_date > course.end_date:
-            course.end_date = self.end_date
+        if course.course_type == "SCHEDULED":
+            if self.start_date < course.start_date:
+                course.start_date = self.start_date
+            if self.end_date > course.end_date:
+                course.end_date = self.end_date
         course.put()
 
     @property
@@ -208,7 +242,7 @@ class Detail(GCModel):
     description = ndb.StringProperty(required=True)
 
     def to_dict(self):
-        result = super(GCModel, self).to_dict()
+        result = super(Detail, self).to_dict()
         del result['created_for']
         return result
 
@@ -261,7 +295,7 @@ class Exercise(GCModel):
 
         # in case we need the key of a structured property
         # def to_dict(self):
-        # result = super(GCModel, self).to_dict()
+        # result = super(Exercise, self).to_dict()
         # result['list_levels'] = [l.to_dict() for l in self.list_levels]
         #     return result
 

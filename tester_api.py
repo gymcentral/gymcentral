@@ -12,13 +12,16 @@ from models import Course, Level, Exercise, Session, CourseSubscription, Exercis
 __author__ = 'stefano'
 
 import logging
+import logging.config
 import unittest
 from google.appengine.ext import testbed
 
 
+
 class APIestCase(unittest.TestCase):
     def setUp(self):
-        logging.getLogger().setLevel(logging.CRITICAL)
+        logging.config.fileConfig('logging.conf')
+        self.logger = logging.getLogger('myLogger')
         # First, create an instance of the Testbed class.
         self.testbed = testbed.Testbed()
         # Then activate the testbed, which prepares the service stubs for use.
@@ -52,41 +55,42 @@ class APIestCase(unittest.TestCase):
 
     #
     def test_hw(self):
-        response = self.app.get('/api-trainee/hw')
+        response = self.app.get('/api/admin/hw')
         assert response.status_code == 200
         indata = dict(number=1, text="ciao")
-        response = self.app.post_json('/api-trainee/hw', indata)
+        response = self.app.post_json('/api/admin/hw', indata)
         assert response.json == dict(input=indata)
 
     def test_profile(self):
-        self.app.get('/api-trainee/users/current', status=401)
-        response = self.app.get('/api-trainee/users/current', headers=self.auth_headers)
+        self.app.get('/api/trainee/users/current', status=401)
+        response = self.app.get('/api/trainee/users/current', headers=self.auth_headers)
         assert response.json['id'] == self.user.id
         indata = dict(name="edit name")
-        self.app.put_json('/api-trainee/users/current', indata, headers=self.auth_headers)
-        response = self.app.get('/api-trainee/users/current', headers=self.auth_headers)
+        response =self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers)
+        self.logger.debug(response.json)
         assert response.json['name'] == "edit name"
         assert response.json['id'] == self.user.id
         self.app.set_cookie('gc_token', self.cookie)
-        response = self.app.get('/api-trainee/users/current')
+        response = self.app.get('/api/trainee/users/current')
         self.app.reset()
         assert response.json['name'] == "edit name"
         assert response.json['id'] == self.user.id
-        self.app.get('/api-trainee/users/current', status=401)
+        self.app.get('/api/trainee/users/current', status=401)
         indata = dict(id=123)
-        self.app.put_json('/api-trainee/users/current', indata, headers=self.auth_headers, status=400)
+        self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers, status=400)
         indata = dict(key=123)
-        self.app.put_json('/api-trainee/users/current', indata, headers=self.auth_headers, status=400)
+        self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers, status=400)
         indata = dict(thisisnothere=123)
-        self.app.put_json('/api-trainee/users/current', indata, headers=self.auth_headers, status=400)
+        self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers, status=400)
 
     def test_club(self):
         # test the club
         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
                                  training_type=["balance", "stability"], tags=["test", "trento"])
 
-        self.app.get('/api-trainee/clubs/%s' % 0, status=404)
-        response = self.app.get('/api-trainee/clubs/%s' % club.id)
+        self.app.get('/api/trainee/clubs/%s' % 0, status=404)
+        response = self.app.get('/api/trainee/clubs/%s' % club.id)
+
         assert response.status_code == 200
         assert response.json['name'] == "test"
 
@@ -95,15 +99,15 @@ class APIestCase(unittest.TestCase):
         APIDB.create_club(name="test3", email="test@test.com", description="desc", url="example.com",
                           training_type=["balance", "stability"], tags=["test", "trento"])
 
-        response = self.app.get('/api-trainee/clubs')
+        response = self.app.get('/api/trainee/clubs')
         assert response.json['total'] == 3
-        response = self.app.get('/api-trainee/clubs?size=2&page=2')
+        response = self.app.get('/api/trainee/clubs?size=2&page=2')
         assert response.json['results'][0]['name'] == "test3"
         # this implictly check the status
-        response = self.app.get('/api-trainee/clubs?member=true', status=401)
+        response = self.app.get('/api/trainee/clubs?member=true', status=401)
         assert response.json['error']['message'] == "Authentication Error: member is set but user is missing"
         APIDB.add_member_to_club(self.user, club)
-        response = self.app.get('/api-trainee/clubs?member=true', headers=self.auth_headers)
+        response = self.app.get('/api/trainee/clubs?member=true', headers=self.auth_headers)
         assert response.status_code == 200
         assert response.json['total'] == 1
 
@@ -116,25 +120,25 @@ class APIestCase(unittest.TestCase):
         # add a memb
         APIDB.add_member_to_club(self.user, club)
         # create another club
-        self.app.get('/api-trainee/clubs/%s/membership' % 0, headers=self.auth_headers, status=404)
-        response = self.app.get('/api-trainee/clubs/%s/membership' % club.id, headers=self.auth_headers)
+        self.app.get('/api/trainee/clubs/%s/membership' % 0, headers=self.auth_headers, status=404)
+        response = self.app.get('/api/trainee/clubs/%s/membership' % club.id, headers=self.auth_headers)
         assert response.json['total'] == 1
-        response = self.app.get('/api-trainee/clubs/%s/membership?role=MEMBER' % club.id, headers=self.auth_headers)
+        response = self.app.get('/api/trainee/clubs/%s/membership?role=MEMBER' % club.id, headers=self.auth_headers)
         assert response.json['results'][0]['nickname'] == 'member'
         APIDB.add_trainer_to_club(self.trainer, club)
-        response = self.app.get('/api-trainee/clubs/%s/membership?size=1&page=2' % club.id, headers=self.auth_headers)
+        response = self.app.get('/api/trainee/clubs/%s/membership?size=1&page=2' % club.id, headers=self.auth_headers)
         assert response.json['results'][0]['name'] == 'trainer'
-        response = self.app.get('/api-trainee/clubs/%s/membership?role=TRAINER' % club.id, headers=self.auth_headers)
+        response = self.app.get('/api/trainee/clubs/%s/membership?role=TRAINER' % club.id, headers=self.auth_headers)
         # this is not a real good test, it depends on how api add results, it does adding members, owners, trainers
         assert response.json['results'][0]['name'] == 'trainer'
         APIDB.add_owner_to_club(self.owner, club)
-        response = self.app.get('/api-trainee/clubs/%s/membership?role=OWNER' % club.id, headers=self.auth_headers)
+        response = self.app.get('/api/trainee/clubs/%s/membership?role=OWNER' % club.id, headers=self.auth_headers)
         assert response.json['results'][0]['name'] == 'owner'
-        self.app.get('/api-trainee/clubs/%s/membership?role=NOPE' % club.id, headers=self.auth_headers, status=400)
+        self.app.get('/api/trainee/clubs/%s/membership?role=NOPE' % club.id, headers=self.auth_headers, status=400)
         APIDB.rm_owner_from_club(self.owner, club)
         APIDB.rm_member_from_club(self.user, club)
         APIDB.rm_trainer_from_club(self.trainer, club)
-        response = self.app.get('/api-trainee/clubs/%s/membership' % club.id, headers=self.auth_headers)
+        response = self.app.get('/api/trainee/clubs/%s/membership' % club.id, headers=self.auth_headers)
         assert response.json['total'] == 0
 
 
@@ -155,28 +159,29 @@ class APIestCase(unittest.TestCase):
         APIDB.add_member_to_course(self.user, course, "ACCEPTED")
         APIDB.add_member_to_course(member2, course, "ACCEPTED")
         APIDB.add_trainer_to_course(self.trainer, course)
-        self.app.get('/api-trainee/clubs/%s/courses' % 0, status=404)
-        response = self.app.get('/api-trainee/clubs/%s/courses' % club.id)
+
+        self.app.get('/api/trainee/clubs/%s/courses' % 0, status=404)
+        response = self.app.get('/api/trainee/clubs/%s/courses' % club.id)
         assert response.json['results'][0]['name'] == course.name
         assert response.json['results'][0]['subscriberCount'] == 2
         assert response.json['results'][0]['trainers'][0]['name'] == self.trainer.name
-        self.app.get('/api-trainee/courses/%s' % 0, status=404, headers=self.auth_headers)
-        self.app.get('/api-trainee/courses/%s' % course.id, status=401)
-        response = self.app.get('/api-trainee/courses/%s' % course.id, headers=self.auth_headers)
+        self.app.get('/api/trainee/courses/%s' % 0, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/courses/%s' % course.id, status=401)
+        response = self.app.get('/api/trainee/courses/%s' % course.id, headers=self.auth_headers)
         # same as before
         assert response.json['name'] == course.name
         assert response.json['subscriberCount'] == 2
         assert response.json['trainers'][0]['name'] == self.trainer.name
 
         # test subscribers
-        self.app.get('/api-trainee/courses/%s/subscribers' % 0, status=404, headers=self.auth_headers)
-        self.app.get('/api-trainee/courses/%s/subscribers' % course.id, status=401)
-        response = self.app.get('/api-trainee/courses/%s/subscribers' % course.id, headers=self.auth_headers)
+        self.app.get('/api/trainee/courses/%s/subscribers' % 0, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/courses/%s/subscribers' % course.id, status=401)
+        response = self.app.get('/api/trainee/courses/%s/subscribers' % course.id, headers=self.auth_headers)
         # same as before
         assert response.json['total'] == 2
         APIDB.rm_member_from_course(self.user, course)
-        self.app.get('/api-trainee/courses/%s' % course.id, status=404, headers=self.auth_headers)
-        self.app.get('/api-trainee/courses/%s/subscribers' % course.id, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/courses/%s' % course.id, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/courses/%s/subscribers' % course.id, status=404, headers=self.auth_headers)
 
 
     def test_sessions(self):
@@ -201,16 +206,16 @@ class APIestCase(unittest.TestCase):
                           profile=[[{"activityId": ex.id, "level": 10}]])
         session.put()
 
-        self.app.get('/api-trainee/courses/%s/sessions' % course.id, status=401)
-        self.app.get('/api-trainee/courses/%s/sessions' % course.id, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=401)
+        self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=404, headers=self.auth_headers)
         APIDB.add_member_to_course(self.user, course, "ACCEPTED")
-        self.app.get('/api-trainee/courses/%s/sessions' % 0, status=404, headers=self.auth_headers)
-        response = self.app.get('/api-trainee/courses/%s/sessions' % course.id, headers=self.auth_headers)
+        self.app.get('/api/trainee/courses/%s/sessions' % 0, status=404, headers=self.auth_headers)
+        response = self.app.get('/api/trainee/courses/%s/sessions' % course.id, headers=self.auth_headers)
         APIDB.rm_member_from_course(self.user, course)
-        self.app.get('/api-trainee/courses/%s/sessions' % course.id, status=401)
-        self.app.get('/api-trainee/courses/%s/sessions' % course.id, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=401)
+        self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=404, headers=self.auth_headers)
         APIDB.add_member_to_course(self.user, course, "ACCEPTED")
-        self.app.get('/api-trainee/courses/%s/sessions' % 0, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/courses/%s/sessions' % 0, status=404, headers=self.auth_headers)
 
 
 
@@ -251,11 +256,11 @@ class APIestCase(unittest.TestCase):
         # ex2.put()
         # APIDB.add_activity_to_session(session, ex2)
 
-        self.app.get('/api-trainee/club/%s/sessions' % club.id, status=401)
-        self.app.get('/api-trainee/club/%s/sessions' % club.id, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/clubs/%s/sessions' % club.id, status=401)
+        self.app.get('/api/trainee/clubs/%s/sessions' % club.id, status=404, headers=self.auth_headers)
         APIDB.add_member_to_course(self.user, course, "ACCEPTED")
 
-        self.app.get('/api-trainee/club/%s/sessions' % 0, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/clubs/%s/sessions' % 0, status=404, headers=self.auth_headers)
 
         # ----
 
@@ -266,23 +271,20 @@ class APIestCase(unittest.TestCase):
 
         performance = ExercisePerformance(user=self.user.key, session=session.key, level=l1.key)
         performance.put()
-        response = self.app.get('/api-trainee/club/%s/sessions?from=%s' % (club.id, "ciao"), status=400,
+        response = self.app.get('/api/trainee/clubs/%s/sessions?from=%s' % (club.id, "ciao"), status=400,
                                 headers=self.auth_headers)
-        print response.json
-
-        response = self.app.get('/api-trainee/club/%s/sessions?from=%s&to=%s' % (
+        response = self.app.get('/api/trainee/clubs/%s/sessions?from=%s&to=%s' % (
             club.id, date_to_js_timestamp(datetime.now()), date_to_js_timestamp(datetime.now() + timedelta(hours=2))),
                                 headers=self.auth_headers)
         assert response.json['results'][0]['noOfParticipations'] == 1
 
-        self.app.get('/api-trainee/sessions/%s' % session.id, status=401)
+        self.app.get('/api/trainee/sessions/%s' % session.id, status=401)
         APIDB.rm_member_from_course(self.user, course)
-        self.app.get('/api-trainee/sessions/%s' % session.id, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/sessions/%s' % session.id, status=404, headers=self.auth_headers)
         APIDB.add_member_to_course(self.user, course)
-        self.app.get('/api-trainee/sessions/%s' % 0, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/sessions/%s' % 0, status=404, headers=self.auth_headers)
 
-        logging.getLogger().setLevel(logging.DEBUG)
-        response = self.app.get('/api-trainee/sessions/%s' % session.id, headers=self.auth_headers)
+        response = self.app.get('/api/trainee/sessions/%s' % session.id, headers=self.auth_headers)
         assert response.json['activities'][0]['indicators'][0]['possibleAnswers'][0]['name'] == 'test'
 
     # level = Level(level_number=1)
@@ -307,7 +309,6 @@ class APIestCase(unittest.TestCase):
     # APIDB.rm_activity_from_session(session, ex)
     # self.assertEqual(1, session.activity_count, "Activity are incorrect")
 
-    logging.getLogger().setLevel(logging.CRITICAL)
 
     if __name__ == '__main__':
         unittest.main()

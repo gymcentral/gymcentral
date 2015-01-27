@@ -1,17 +1,19 @@
+import logging
+import logging.config
 from api_db_utils import APIDB
 
 
 __author__ = 'stefano'
 
-import logging
 import unittest
 
 from google.appengine.ext import testbed
 
+logging.config.fileConfig('logging.conf')
+logger = logging.getLogger('myLogger')
 
 class NDBTestCase(unittest.TestCase):
     def setUp(self):
-        logging.getLogger().setLevel(logging.INFO)
         # First, create an instance of the Testbed class.
         self.testbed = testbed.Testbed()
         # Then activate the testbed, which prepares the service stubs for use.
@@ -59,8 +61,9 @@ class NDBTestCase(unittest.TestCase):
         # print l
         # print len(l)
         # print sanitize_list(json_serializer(l))
-        club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
+        d_club = dict(name="test", email="test@test.com", description="desc", url="example.com",
                                  training_type=["balance", "stability"], tags=["test", "trento"])
+        club = APIDB.create_club(**d_club)
         # club1 = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
         # training_type=["balance", "stability"], tags=["test", "trento"])
         # club2 = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
@@ -74,13 +77,13 @@ class NDBTestCase(unittest.TestCase):
         # course.put()
         # session = Session(name="session test", session_type="JOINT", course=course.key,
         # start_date=(datetime.now() - timedelta(hours=2)),
-        #                   end_date=(datetime.now() - timedelta(minutes=1)))
+        # end_date=(datetime.now() - timedelta(minutes=1)))
         # session.put()
         #
         member = APIDB.create_user("own:" + "member", username="member", fname="test", sname="test", avatar="..",
                                    unique_properties=['username'])
-        APIDB.add_member_to_club(member,club)
-        print APIDB.get_club_members(club)
+        APIDB.add_member_to_club(member, club)
+        logger.debug(APIDB.get_club_members(club))
         #
         # level = Level()
         # level.put()
