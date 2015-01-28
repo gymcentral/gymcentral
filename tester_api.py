@@ -5,7 +5,7 @@ import webtest
 from api_db_utils import APIDB
 from gymcentral.auth import GCAuth
 from gymcentral.gc_utils import date_to_js_timestamp
-from main import app
+from api import app
 from models import Course, Level, Exercise, Session, CourseSubscription, ExercisePerformance, Indicator, PossibleAnswer
 
 
@@ -53,7 +53,7 @@ class APIestCase(unittest.TestCase):
     def tearDown(self):
         self.testbed.deactivate()
 
-    #
+
     def test_hw(self):
         response = self.app.get('/api/admin/hw')
         assert response.status_code == 200
@@ -110,9 +110,6 @@ class APIestCase(unittest.TestCase):
         response = self.app.get('/api/trainee/clubs?member=true', headers=self.auth_headers)
         assert response.status_code == 200
         assert response.json['total'] == 1
-
-        if __name__ == '__main__':
-            unittest.main()
 
     def test_membership(self):
         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
@@ -180,10 +177,10 @@ class APIestCase(unittest.TestCase):
         # same as before
         assert response.json['total'] == 2
         APIDB.rm_member_from_course(self.user, course)
-        self.app.get('/api/trainee/courses/%s' % course.id, status=404, headers=self.auth_headers)
-        self.app.get('/api/trainee/courses/%s/subscribers' % course.id, status=404, headers=self.auth_headers)
-
-
+        self.app.get('/api/trainee/courses/%s' % course.id, status=401, headers=self.auth_headers)
+        self.app.get('/api/trainee/courses/%s/subscribers' % course.id, status=401, headers=self.auth_headers)
+    #
+    #
     def test_sessions(self):
         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
                                  training_type=["balance", "stability"], tags=["test", "trento"])
@@ -207,13 +204,13 @@ class APIestCase(unittest.TestCase):
         session.put()
 
         self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=401)
-        self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=401, headers=self.auth_headers)
         APIDB.add_member_to_course(self.user, course, "ACCEPTED")
         self.app.get('/api/trainee/courses/%s/sessions' % 0, status=404, headers=self.auth_headers)
         response = self.app.get('/api/trainee/courses/%s/sessions' % course.id, headers=self.auth_headers)
         APIDB.rm_member_from_course(self.user, course)
         self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=401)
-        self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=401, headers=self.auth_headers)
         APIDB.add_member_to_course(self.user, course, "ACCEPTED")
         self.app.get('/api/trainee/courses/%s/sessions' % 0, status=404, headers=self.auth_headers)
 
@@ -257,7 +254,7 @@ class APIestCase(unittest.TestCase):
         # APIDB.add_activity_to_session(session, ex2)
 
         self.app.get('/api/trainee/clubs/%s/sessions' % club.id, status=401)
-        self.app.get('/api/trainee/clubs/%s/sessions' % club.id, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/clubs/%s/sessions' % club.id, status=401, headers=self.auth_headers)
         APIDB.add_member_to_course(self.user, course, "ACCEPTED")
 
         self.app.get('/api/trainee/clubs/%s/sessions' % 0, status=404, headers=self.auth_headers)
@@ -280,7 +277,7 @@ class APIestCase(unittest.TestCase):
 
         self.app.get('/api/trainee/sessions/%s' % session.id, status=401)
         APIDB.rm_member_from_course(self.user, course)
-        self.app.get('/api/trainee/sessions/%s' % session.id, status=404, headers=self.auth_headers)
+        self.app.get('/api/trainee/sessions/%s' % session.id, status=401, headers=self.auth_headers)
         APIDB.add_member_to_course(self.user, course)
         self.app.get('/api/trainee/sessions/%s' % 0, status=404, headers=self.auth_headers)
 

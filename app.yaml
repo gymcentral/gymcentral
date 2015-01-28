@@ -10,11 +10,11 @@ handlers:
   upload: favicon\.ico
 
 - url: /api/admin/delete-tokens
-  script: main.app
+  script: api.app
   login: admin
 
 - url: /api/.*
-  script: main.app
+  script: api.app
 
 libraries:
 - name: webapp2

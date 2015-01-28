@@ -1,11 +1,15 @@
+__author__ = 'stefano tranquillini'
+
 import datetime
 import logging
 import logging.config
 
 from google.appengine.ext import ndb
+from google.appengine.ext.ndb.key import Key
 import webapp2
 
 from api_db_utils import APIDB
+from auth import user_has_role
 import cfg
 from gymcentral.app import WSGIApp
 from gymcentral.auth import user_required, GCAuth
@@ -15,19 +19,38 @@ from gymcentral.gc_utils import sanitize_json, sanitize_list, json_from_paginate
 from models import User
 
 
-__author__ = 'stefano tranquillini'
+# my app
+
+class GCApp(WSGIApp):
+    # extended to load the value before the request
+    @staticmethod
+    def edit_request(router, request, response):# pragma: no cover
+        kwargs = router.match(request)[2]
+        if kwargs:
+            if len(kwargs) == 1:
+                key, value = kwargs.popitem()
+                try:
+                    model = Key(urlsafe=value).get()
+                    setattr(request, cfg.MODEL_NAME, model)
+                    return request
+                except:
+                    raise NotFoundException()
+        return request
+
+# data
 # check the cfg file, it should not be uploaded!
-app = WSGIApp(config=cfg.API_APP_CFG, debug=cfg.DEBUG)
+app = GCApp(config=cfg.API_APP_CFG, debug=cfg.DEBUG)
 APP_TRAINEE = "api/trainee"
 APP_ADMIN = "api/admin"
 APP_COACH = "api/coach"
-
 
 logging.config.fileConfig('logging.conf')
 logger = logging.getLogger('myLogger')
 
 
-@app.route("/%s/delete-tokens"% APP_ADMIN, methods=('GET',))
+
+# ADMIN
+@app.route("/%s/delete-tokens" % APP_ADMIN, methods=('GET',))
 def delete_auth(req):  # pragma: no cover
     delta = datetime.timedelta(seconds=int(cfg.AUTH_TOKEN_MAX_AGE))
     expiredTokens = User.token_model.query(
@@ -39,15 +62,24 @@ def delete_auth(req):  # pragma: no cover
 
 
 @app.route("/%s/hw" % APP_ADMIN, methods=('GET', ))
-def hw(req):
+def hw(req):# pragma: no cover
     logger.debug("hello world")
     return "hello world!"
 
 
+@app.route("/%s/hw/<id_obj>" % APP_ADMIN, methods=('GET', ))
+def hw_par(req, id_obj):# pragma: no cover
+    logger.debug("hello world")
+    return id_obj
+
+
 @app.route("/%s/hw" % APP_ADMIN, methods=('POST', ))
-def hw_post(req):
-    logger.info("%s"%json_from_request(req))
+def hw_post(req):# pragma: no cover
+    logger.info("%s" % json_from_request(req))
     return 200, dict(input=json_from_request(req))
+
+
+# TRAINEE
 
 
 @app.route("/%s/auth/<provider>/<token>" % APP_TRAINEE, methods=('GET',))
@@ -132,7 +164,7 @@ def profile_update(req):
     j_req = json_from_request(req)
     update, user = APIDB.update_user(req.user, **j_req)
     out = ['id', 'name', 'nickname', 'gender', 'picture', 'avatar', 'birthday', 'country', 'city', 'language',
-       'email', 'phone', 'active_club']
+           'email', 'phone', 'active_club']
     return sanitize_json(user, out)
 
 
@@ -166,7 +198,7 @@ def club_list(req):
     for club in clubs:
         j_club = club.to_dict()
         j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
-        j_club['course_count'] = APIDB.get_club_courses(club,count_only=True)
+        j_club['course_count'] = APIDB.get_club_courses(club, count_only=True)
         j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['name', 'picture'])
         items.append(j_club)
     ret['results'] = sanitize_list(items,
@@ -185,11 +217,7 @@ def club_details(req, id_club):
     :param id_club: id_club of the club
     :return: the detail of the club
     """
-    club = APIDB.get_club_by_id(id_club)
-    if not club:
-        raise NotFoundException()
-    # if not APIDB.is_user_subscribed_to_club(req.user, club):
-    # raise NotFoundException()
+    club = req.model
     j_club = club.to_dict()
     j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
     j_club['courses'] = sanitize_list(APIDB.get_club_courses(club),
@@ -208,9 +236,7 @@ def club_membership(req, id_club):
     :return:
     """
     # TODO: test
-    club = APIDB.get_club_by_id(id_club)
-    if not club:
-        raise NotFoundException()
+    club = req.model
     j_req = json_from_paginated_request(req)
     page = int(j_req['page'])
     size = int(j_req['size'])
@@ -254,9 +280,7 @@ def course_list(req, id_club):
     :return: list of courses
     '''
     # TODO: test
-    club = APIDB.get_club_by_id(id_club)
-    if not club:
-        raise NotFoundException()
+    club = req.model
     j_req = json_from_paginated_request(req)
     page = int(j_req['page'])
     size = int(j_req['size'])
@@ -281,7 +305,7 @@ def course_list(req, id_club):
 
 
 @app.route('/%s/courses/<id_course>' % APP_TRAINEE, methods=('GET',))
-@user_required
+@user_has_role(["MEMBER"])
 def course_detail(req, id_course):
     '''
     returns the details of a course
@@ -290,12 +314,7 @@ def course_detail(req, id_course):
     :param id: id of the course
     :return: the course details
     '''
-    # TODO: test
-    course = APIDB.get_course_by_id(id_course)
-    if not course:
-        raise NotFoundException()
-    if not APIDB.is_user_subscribed_to_course(req.user, course):
-        raise NotFoundException()
+    course = req.model
     j_course = course.to_dict()
     j_course["trainers"] = sanitize_list(APIDB.get_course_trainers(course), allowed=["id", "name", "picture"])
     j_course["subscriber_count"] = APIDB.get_course_subscribers(course, count_only=True)
@@ -309,7 +328,7 @@ def course_detail(req, id_course):
 
 
 @app.route('/%s/courses/<id_course>/subscribers' % APP_TRAINEE, methods=('GET',))
-@user_required
+@user_has_role(["MEMBER"])
 def course_subscribers_list(req, id_course):
     '''
     Gets the list of subscribers of a course
@@ -318,11 +337,7 @@ def course_subscribers_list(req, id_course):
     :return: list of subscribers, only nickname and avatar
     '''
     # TODO: test
-    course = APIDB.get_course_by_id(id_course)
-    if not course:
-        raise NotFoundException()
-    if not APIDB.is_user_subscribed_to_course(req.user, course):
-        raise NotFoundException()
+    course = req.model
     j_req = json_from_paginated_request(req)
     page = int(j_req['page'])
     size = int(j_req['size'])
@@ -337,7 +352,7 @@ def course_subscribers_list(req, id_course):
 # '''
 # Gets the subscription detail of the logged user for that precise course
 # http://docs.gymcentralapi.apiary.io/#reference/training-subscription/training-subscription/training-subscription
-#     :param req: req object
+# :param req: req object
 #     :param id: course id
 #     :return: list of subscribers, only nickname and avatar
 #     '''
@@ -354,7 +369,7 @@ def course_subscribers_list(req, id_course):
 # Training session
 
 @app.route('/%s/courses/<id_course>/sessions' % APP_TRAINEE, methods=('GET',))
-@user_required
+@user_has_role(["MEMBER"])
 def course_session_list(req, id_course):
     '''
     list of training sessions
@@ -364,11 +379,7 @@ def course_session_list(req, id_course):
     :return: list of the training session
     '''
     # TODO: test
-    course = APIDB.get_course_by_id(id_course)
-    if not course:
-        raise NotFoundException()
-    if not APIDB.is_user_subscribed_to_course(req.user, course):
-        raise NotFoundException()
+    course = req.model
     j_req = json_from_paginated_request(req)
     page = int(j_req['page'])
     size = int(j_req['size'])
@@ -386,7 +397,7 @@ def course_session_list(req, id_course):
 
 
 @app.route('/%s/clubs/<id_club>/sessions' % APP_TRAINEE, methods=('GET',))
-@user_required
+@user_has_role(["MEMBER"])
 def club_session_list(req, id_club):
     '''
     list of training sessions
@@ -396,12 +407,7 @@ def club_session_list(req, id_club):
     :return: list of the training session
     '''
     # TODO: test
-    club = APIDB.get_club_by_id(id_club)
-
-    if not club:
-        raise NotFoundException()
-    if not APIDB.is_user_subscribed_to_club(req.user, club):
-        raise NotFoundException()
+    club = req.model
     j_req = json_from_paginated_request(req, (('status', 'UPCOMING'), ('type', None),
                                               ('from', date_to_js_timestamp(datetime.datetime.now())),
                                               ('to', date_to_js_timestamp(datetime.datetime.now()))))
@@ -433,7 +439,7 @@ def club_session_list(req, id_club):
 
 
 @app.route('/%s/sessions/<id_session>' % APP_TRAINEE, methods=('GET',))
-@user_required
+@user_has_role(["MEMBER"])
 def club_session_detail(req, id_session):
     '''
     list of training sessions
@@ -442,11 +448,7 @@ def club_session_detail(req, id_session):
     :return: detail of the session
     '''
     # TODO: test
-    session = APIDB.get_session_by_id(id_session)
-    if not session:
-        raise NotFoundException()
-    if not APIDB.is_user_subscribed_to_course(req.user, session.course):
-        raise NotFoundException()
+    session = req.model
     j_session = session.to_dict()
     j_session['no_of_participants'] = session.participation_count
     j_session['status'] = session.status
@@ -480,3 +482,7 @@ def club_session_detail(req, id_session):
     return res
 
     # Training session
+
+
+
+# COACH

@@ -382,15 +382,20 @@ class APIDB():
 
     @staticmethod
     def __create(model, **args):
+        NOT_ALLOWED = ['id', 'key', 'namespace', 'parent']
+        for key, value in args.iteritems():
+            if key in NOT_ALLOWED:
+                raise BadParameters(key)
         model.populate(**args)
         model.put()
 
     @staticmethod
     def __update(model, not_allowed=None, **args):
+        NOT_ALLOWED = ['id', 'key', 'namespace', 'parent']
         if not not_allowed:
-            not_allowed = ['id']
+            not_allowed = []
         else:
-            not_allowed += ['id']
+            not_allowed += NOT_ALLOWED
         for key, value in args.iteritems():
             if key in not_allowed:
                 raise BadParameters(key)
