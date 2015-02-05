@@ -1,5 +1,8 @@
 from datetime import datetime
+
 from google.appengine.api.datastore_errors import BadValueError
+
+from gymcentral.exceptions import AuthenticationError
 
 from gymcentral.gc_models import GCUser, GCModel, GCModelMtoMNoRep
 
@@ -8,9 +11,14 @@ __author__ = 'fab,stefano.tranquillini'
 
 from google.appengine.ext import ndb
 
-# TODO create a GCMOdel for the support table that automaitcally has the get/build id
+# TODO create a GCMOdel for the support table that automatically has the get/build id
 
 class User(GCUser):
+    # this to save writing ops. only email can be used.
+    _default_indexed = False
+
+    email = ndb.StringProperty(indexed=True, required=True, default="none@gymcentral.net")
+
     # this is an expando class
 
     @property
@@ -31,9 +39,16 @@ class User(GCUser):
                                             ClubMembership.membership_type == "OWNER",
                                             ClubMembership.is_active == True))
 
+    def member_of_type(self, membership_types=[]):
+        return ClubMembership.query(ndb.AND(ClubMembership.member == self.key,
+                                            ClubMembership.membership_type.IN(membership_types),
+                                            ClubMembership.is_active == True))
+
     def membership_type(self, club):
         membership = ndb.Key(ClubMembership, ClubMembership.build_id(self.key, club.key)).get()
-        return membership.mebership_type
+        if membership and membership.is_active:
+            return membership.mebership_type
+        raise AuthenticationError("User is not connected to the Club")
 
 
 class Course(GCModel):
@@ -66,7 +81,12 @@ class CourseTrainers(GCModelMtoMNoRep):
     member = ndb.KeyProperty(kind='User', required=True)
     course = ndb.KeyProperty(kind='Course', required=True)
     is_active = ndb.BooleanProperty(default=True)
+    creation_date = ndb.DateTimeProperty(auto_now=True)
 
+class Observation(GCModel):
+    created_by = ndb.KeyProperty(kind='User')
+    text = ndb.StringProperty()
+    when = ndb.DateTimeProperty(auto_now=True)
 
 class CourseSubscription(GCModelMtoMNoRep):
     # http://docs.gymcentralapi.apiary.io/#reference/training-subscription
@@ -81,6 +101,8 @@ class CourseSubscription(GCModelMtoMNoRep):
     increase_level = ndb.BooleanProperty(default=False, required=True)
     feedback = ndb.StringProperty(choices=["ACCEPTED", "DECLINED", "PENDING"], default="PENDING",
                                   required=True)
+    creation_date = ndb.DateTimeProperty(auto_now=True)
+    observations = ndb.StructuredProperty(Observation, repeated=True)
 
 
 class ClubMembership(GCModelMtoMNoRep):
@@ -90,7 +112,19 @@ class ClubMembership(GCModelMtoMNoRep):
     is_active = ndb.BooleanProperty(default=True)
     membership_type = ndb.StringProperty(choices=["MEMBER", "TRAINER", "OWNER"], default="MEMBER",
                                          required=True)
+    status = ndb.StringProperty(choices=["ACCEPTED", "DECLINED", "PENDING"], default="PENDING",
+                                required=True)
+    creation_date = ndb.DateTimeProperty(auto_now=True)
+
     # not sure that all these info goes here
+
+    @property
+    def get_member(self):
+        return self.member.get()
+
+    @property
+    def get_club(self):
+        return self.club.get()
 
 
 class Club(GCModel):
@@ -125,7 +159,7 @@ class Club(GCModel):
 
     @property
     def members(self):
-        return self.all_memberships.filter(ClubMembership.membership_type == "MEMBER", )
+        return self.all_memberships.filter(ClubMembership.membership_type == "MEMBER")
 
     @property
     def trainers(self):
@@ -136,20 +170,18 @@ class Club(GCModel):
         return self.all_memberships.filter(ClubMembership.membership_type == "OWNER")
 
 
-    # these methods are not used anymore, there's the query()
-    @classmethod
-    def get_by_email(cls, email, **kwargs):
-        return cls.query(cls.email == email), kwargs
-
-    @classmethod
-    def get_by_language(cls, language, **kwargs):
-        return cls.query().filter(cls.language == language), kwargs
-
-    @classmethod
-    def get_by_training(cls, training, **kwargs):
-        return cls.query(cls.training_type.IN(training)), kwargs
-
-
+        # these methods are not used anymore, there's the query()
+        # @classmethod
+        # def get_by_email(cls, email, **kwargs):
+        # return cls.query(cls.email == email), kwargs
+        #
+        # @classmethod
+        # def get_by_language(cls, language, **kwargs):
+        # return cls.query().filter(cls.language == language), kwargs
+        #
+        # @classmethod
+        # def get_by_training(cls, training, **kwargs):
+        # return cls.query(cls.training_type.IN(training)), kwargs
 
 
 class Session(GCModel):
@@ -167,6 +199,20 @@ class Session(GCModel):
     list_exercises = ndb.KeyProperty(kind="Exercise", repeated=True)
     profile = ndb.JsonProperty()
     meta_data = ndb.JsonProperty()
+    on_before = ndb.KeyProperty(kind='Indicator', repeated=True)
+    on_after = ndb.KeyProperty(kind='Indicator', repeated=True)
+
+    # @property
+    # def get_on_before(self):
+    #     return ndb.get_multi(self.on_before)
+    #
+    # @property
+    # def get_on_after(self):
+    #     return ndb.get_multi(self.on_after)
+    #
+    # @property
+    # def get_exercises(self):
+    #     return ndb.get_multi(self.list_exercises)
 
     def to_dict(self):
         result = super(Session, self).to_dict()
@@ -216,11 +262,11 @@ class Session(GCModel):
                 course.end_date = self.end_date
         course.put()
 
-    @property
-    def participation_count(self):
-        return ExercisePerformance.query(ExercisePerformance.session == self.key,
-                                         projection=[ExercisePerformance.user],
-                                         group_by=[ExercisePerformance.user]).count()
+    # @property
+    # def participation_count(self):
+    # return ExercisePerformance.query(ExercisePerformance.session == self.key,
+    #                                      projection=[ExercisePerformance.user],
+    #                                      group_by=[ExercisePerformance.user]).count()
 
 
     @property
@@ -232,7 +278,10 @@ class Source(GCModel):
     source_type = ndb.StringProperty(choices=["VIDEO", "AUDIO", "IMAGE", "TEXT"], required=True)
     hd_link = ndb.StringProperty()
     sd_link = ndb.StringProperty()
+    mobile_link = ndb.StringProperty()
     download_link = ndb.StringProperty()
+    http_live_streaming = ndb.StringProperty()
+    media_length = ndb.FloatProperty()
 
 
 class Detail(GCModel):
@@ -257,7 +306,25 @@ class Level(GCModel):
     details = ndb.JsonProperty()
 
 
-class ExercisePerformance(GCModel):
+class TimeData(GCModel):
+    start = ndb.DateTimeProperty()
+    end = ndb.DateTimeProperty()
+
+
+class Participation(GCModelMtoMNoRep):
+    session = ndb.KeyProperty(kind="Session", required=True)
+    user = ndb.KeyProperty(kind="User", required=True)
+    level = ndb.IntegerProperty()
+    increase_level = ndb.BooleanProperty(default=False)
+    score = ndb.FloatProperty()
+    when = ndb.StructuredProperty(TimeData, repeated=True)
+
+    @property
+    def participation_count(self):
+        return len(self.when)
+
+
+class Performance(GCModel):
     session = ndb.KeyProperty(kind="Session", required=True)
     user = ndb.KeyProperty(kind="User", required=True)
     level = ndb.KeyProperty(kind="Level", required=True)
@@ -297,5 +364,5 @@ class Exercise(GCModel):
         # def to_dict(self):
         # result = super(Exercise, self).to_dict()
         # result['list_levels'] = [l.to_dict() for l in self.list_levels]
-        #     return result
+        # return result
 

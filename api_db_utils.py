@@ -7,11 +7,11 @@ from google.appengine.ext.ndb.query import Query
 import cfg
 from gymcentral.exceptions import ServerError, BadParameters
 import models
-from models import ExercisePerformance
 
 
-__author__ = 'stefano'
+__author__ = 'stefano tranquillini'
 
+# TODO: write comments of this file
 
 class APIDB():
     model_user = models.User
@@ -21,13 +21,15 @@ class APIDB():
     model_course_user = models.CourseSubscription
     model_course_trainers = models.CourseTrainers
     model_session = models.Session
-    model_exercise_performance = models.ExercisePerformance
+    model_performance = models.Performance
+    model_participation = models.Participation
 
 
     @classmethod
     def create_user(cls, auth_id, unique_properties=None, **user_values):
         """
         Creates a user, wraps the user_create of the mode we use
+
         :param auth_id:
         :param unique_properties:
         :param user_values:
@@ -43,6 +45,7 @@ class APIDB():
     def update_user(cls, user, not_allowed=None, **user_values):
         """
         Update a user
+
         :param user:
         :param not_allowed:
         :param user_values:
@@ -53,10 +56,21 @@ class APIDB():
 
     @classmethod
     def get_user_by_id(cls, id_user):
+        '''
+        get the user by id
+
+        :param id_user:
+        :return:
+        '''
         return cls.model_user.get_by_id(id_user)
 
 
     # [START] User
+    @classmethod
+    def get_user_member_of_type(cls, user, membership_type=[], **kwargs):
+        kwargs['projection'] = 'club'
+        return cls.__get(user.member_of_type(membership_type), **kwargs)
+
     @classmethod
     def get_user_member_of(cls, user, **kwargs):
         kwargs['projection'] = 'club'
@@ -71,6 +85,12 @@ class APIDB():
     def get_user_trainer_of(cls, user, **kwargs):
         kwargs['projection'] = 'club'
         return cls.__get(user.trainer_of, **kwargs)
+
+    @classmethod
+    def get_user_courses(cls, user, **kwargs):
+        kwargs['projection'] = 'course'
+        return cls.__get(cls.model_course_user.query(cls.model_course_user.member == user), **kwargs)
+
 
     # [END] User
 
@@ -103,38 +123,43 @@ class APIDB():
         return cls.model_club_user.get_by_id(user, club).membership_type
 
     @classmethod
-    def get_club_all_members(cls, club, **kwargs):
+    def get_club_all_members(cls, club, status="ACCEPTED", **kwargs):
         kwargs['projection'] = 'member'
-        return cls.__get(club.all_memberships, **kwargs)
-
-    @classmethod
-    def get_club_members(cls, club, **kwargs):
-        kwargs['projection'] = 'member'
-        return cls.__get(club.members, **kwargs)
-
-    @classmethod
-    def get_club_trainers(cls, club, **kwargs):
-        kwargs['projection'] = 'member'
-        return cls.__get(club.trainers, **kwargs)
-
-    @classmethod
-    def get_club_owners(cls, club, **kwargs):
-        kwargs['projection'] = 'member'
-        return cls.__get(club.owners, **kwargs)
-
-
-    @classmethod
-    def get_club_courses(cls, club, active_only=True, **kwargs):
-        query = cls.model_course.query(cls.model_course.club == club.key)
-        if active_only:
-            query = cls.model_course.query(cls.model_course.club == club.key,
-                                           cls.model_course.end_date > datetime.datetime.now())
+        query = club.all_memberships.filter(cls.model_club_user.status == status)
         return cls.__get(query, **kwargs)
 
     @classmethod
-    def add_member_to_club(cls, user, club):
+    def get_club_members(cls, club, status="ACCEPTED", **kwargs):
+        kwargs['projection'] = 'member'
+        query = club.members.filter(cls.model_club_user.status == status)
+        return cls.__get(query, **kwargs)
+
+    @classmethod
+    def get_club_trainers(cls, club, status="ACCEPTED", **kwargs):
+        kwargs['projection'] = 'member'
+        query = club.trainers.filter(cls.model_club_user.status == status)
+        return cls.__get(query, **kwargs)
+
+    @classmethod
+    def get_club_owners(cls, club, status="ACCEPTED", **kwargs):
+        kwargs['projection'] = 'member'
+        query = club.owners.filter(cls.model_club_user.status == status)
+        return cls.__get(query, **kwargs)
+
+
+    @classmethod
+    def get_club_courses(cls, club, active_only=True, course_type=None, **kwargs):
+        query = cls.model_course.query(cls.model_course.club == club.key)
+        if course_type:
+            query = query.filter(cls.model_course.course_type == course_type)
+        if active_only:
+            query = query.filter(cls.model_course.end_date > datetime.datetime.now())
+        return cls.__get(query, **kwargs)
+
+    @classmethod
+    def add_member_to_club(cls, user, club, status="PENDING"):
         cls.model_club_user(id=cls.model_club_user.build_id(user.key, club.key),
-                            member=user.key, club=club.key, is_active=True).put()
+                            member=user.key, club=club.key, is_active=True, status=status).put()
 
     @classmethod
     def rm_member_from_club(cls, user, club):
@@ -149,9 +174,10 @@ class APIDB():
 
 
     @classmethod
-    def add_trainer_to_club(cls, user, club):
+    def add_trainer_to_club(cls, user, club, status="PENDING"):
         cls.model_club_user(id=cls.model_club_user.build_id(user.key, club.key),
-                            member=user.key, club=club.key, is_active=True, membership_type="TRAINER").put()
+                            member=user.key, club=club.key, is_active=True, membership_type="TRAINER",
+                            status=status).put()
 
     @classmethod
     def rm_trainer_from_club(cls, user, club):
@@ -166,7 +192,8 @@ class APIDB():
     @classmethod
     def add_owner_to_club(cls, user, club):
         cls.model_club_user(id=cls.model_club_user.build_id(user.key, club.key),
-                            member=user.key, club=club.key, is_active=True, membership_type="OWNER").put()
+                            member=user.key, club=club.key, is_active=True, membership_type="OWNER",
+                            status="ACCEPTED").put()
 
 
     @classmethod
@@ -182,26 +209,6 @@ class APIDB():
             return membership.membership_type
         else:
             return None
-
-
-    @classmethod
-    def get_session_im_subscribed(cls, user, club, date_from=None, date_to=None, session_type=None, **kwargs):
-        # FIXME: this is different from the documentation, only start date allowed here.
-        courses = cls.model_course.query(cls.model_course.club == club.key).fetch(keys_only=True)
-        subscription_keys = [ndb.Key(cls.model_course_user, cls.model_course_user.build_id(user, course))
-                             for course in courses]
-        real_list = [s.course for s in ndb.get_multi(subscription_keys) if s is not None]
-        if not real_list:
-            return cls.__get([], **kwargs)
-        sessions = cls.model_session.query()
-        sessions = sessions.filter(cls.model_session.course.IN(real_list))
-        if date_from:
-            sessions = sessions.filter(cls.model_session.start_date >= date_from)
-        if date_to:
-            sessions = sessions.filter(cls.model_session.start_date <= date_to)
-        if session_type:
-            sessions = sessions.filter(cls.model_session.session_type == session_type)
-        return cls.__get(sessions, **kwargs)
 
 
     @classmethod
@@ -226,7 +233,7 @@ class APIDB():
                               member=user.key, course=course.key, is_active=True, status=status,
                               profile_level=profile_level, exercises_i_cant_do=exercises_i_cant_do).put()
         # also add the trainer to the club, just in case
-        cls.add_member_to_club(user, course.club.get())
+        cls.add_member_to_club(user, course.club.get(), status=status)
 
 
     @classmethod
@@ -242,7 +249,7 @@ class APIDB():
     def add_trainer_to_course(cls, user, course):
         cls.model_course_trainers(id=cls.model_course_user.build_id(user, course),
                                   member=user.key, course=course.key, is_active=True).put()
-        cls.add_trainer_to_club(user, course.club.get())
+        cls.add_trainer_to_club(user, course.club.get(), "ACCEPTED")
 
 
     @classmethod
@@ -286,9 +293,27 @@ class APIDB():
 
 
     @classmethod
-    def get_course_sessions(cls, course, **kwargs):
-        return cls.__get(cls.model_session.query(cls.model_session.course == course.key), **kwargs)
+    def get_course_sessions(cls, course, date_from=None, date_to=None, session_type=None, status=None, **kwargs):
+        sessions = cls.model_session.query(cls.model_session.course == course.key)
+        if date_from:
+            sessions = sessions.filter(cls.model_session.start_date >= date_from)
+        if date_to:
+            sessions = sessions.filter(cls.model_session.start_date <= date_to)
+        if session_type:
+            sessions = sessions.filter(cls.model_session.session_type == session_type)
+        if status:
+            sessions = sessions.filter(cls.model_session.status == status)
+        return cls.__get(sessions, **kwargs)
 
+    @classmethod
+    def get_club_courses_im_trainer_of(cls, user, club, **kwargs):
+        all_courses = cls.__get(cls.model_course_trainers.query(cls.model_course_trainers.member == user))
+        courses = [course for course in all_courses if course.club == club.key]
+        return cls.__get(courses, **kwargs)
+
+    @classmethod
+    def get_user_subscription(cls, user, course):
+        return cls.model_course_user.get_by_id(user, course)
 
     # [END] Courses
 
@@ -297,34 +322,48 @@ class APIDB():
     def add_activity_to_session(cls, session, exercise):
         if exercise.key not in session.list_exercises:
             session.list_exercises.append(exercise.key)
+            session.put()
 
 
     @classmethod
     def rm_activity_from_session(cls, session, exercise):
         if exercise.key in session.list_exercises:
             session.list_exercises.remove(exercise.key)
-
+            session.put()
 
     @classmethod
     def user_participated_in_session(cls, user, session):
-        return cls.user_participation_details_in_session(user, session, count_only=True) > 0
+        return cls.model_participation.get_by_id(user, session) is not None
 
 
     @classmethod
-    def user_participation_details_in_session(cls, user, session, **kwargs):
-        return cls.__get(cls.model_exercise_performance.query(
-            ndb.AND(cls.model_exercise_performance.user == user.key,
-                    cls.model_exercise_performance.session == session.key)), **kwargs)
+    def user_participation_details(cls, user, session, count_only=False):
+        if count_only:
+            participation = cls.model_participation.get_by_id(user, session)
+            if participation:
+                return participation.participation_count
+            else:
+                return 0
+        return cls.model_participation.get_by_id(user, session)
 
 
     @classmethod
     def session_completeness(cls, user, session):
-        completed_ex = cls.model_exercise_performance.query(ExercisePerformance.session == session.key,
-                                                            cls.model_exercise_performance.user == user.key,
-                                                            projection=[cls.model_exercise_performance.level],
-                                                            group_by=[cls.model_exercise_performance.level]).count()
-        # FIXME: this is the average of completeness of all the exericses.
-        return float(completed_ex) / float(session.activity_count) * 100.0
+        participation = cls.model_participation.get_by_id(user, session)
+        if participation:
+            return participation.score
+        else:
+            return 0
+
+
+    @classmethod
+    def get_session_participation(cls, session):
+        return cls.model_participation.query(cls.model_participation.session == session).count()
+        # while q_participations.count() > 0:
+        # participations = q_participations.fetch(100)
+        # for participation in participations:
+        # total += participation.participation_count
+        # return total
 
 
     @classmethod
@@ -339,6 +378,73 @@ class APIDB():
     def get_session_by_id(cls, id_session):
         return cls.model_session.get_by_id(id_session)
 
+    @classmethod
+    def get_session_indicator_before(cls, session, **kwargs):
+        return cls.__get(session.on_before, **kwargs)
+
+    @classmethod
+    def get_session_indicator_after(cls, session, **kwargs):
+        return cls.__get(session.on_after, **kwargs)
+
+    @classmethod
+    def get_session_exercises(cls, session, **kwargs):
+        return cls.__get(session.list_exercises, **kwargs)
+
+    @classmethod
+    def get_session_im_subscribed(cls, user, club, date_from=None, date_to=None, session_type=None, **kwargs):
+        courses = cls.model_course.query(cls.model_course.club == club.key).fetch(keys_only=True)
+        subscription_keys = [ndb.Key(cls.model_course_user, cls.model_course_user.build_id(user, course))
+                             for course in courses]
+        real_list = [s.course for s in ndb.get_multi(subscription_keys) if s is not None]
+        if not real_list:
+            return cls.__get([], **kwargs)
+        sessions = cls.model_session.query()
+        sessions = sessions.filter(cls.model_session.course.IN(real_list))
+        if date_from:
+            sessions = sessions.filter(cls.model_session.start_date >= date_from)
+        if date_to:
+            sessions = sessions.filter(cls.model_session.start_date <= date_to)
+        if session_type:
+            sessions = sessions.filter(cls.model_session.session_type == session_type)
+        return cls.__get(sessions, **kwargs)
+
+    @classmethod
+    def get_session_im_trainer_of(cls, user, club, date_from=None, date_to=None, session_type=None, **kwargs):
+
+        courses = cls.model_course.query(cls.model_course.club == club.key).fetch(keys_only=True)
+        subscription_keys = [ndb.Key(cls.model_course_trainers, cls.model_course_trainers.build_id(user, course))
+                             for course in courses]
+        real_list = [s.course for s in ndb.get_multi(subscription_keys) if s is not None]
+        if not real_list:
+            return cls.__get([], **kwargs)
+        sessions = cls.model_session.query()
+        sessions = sessions.filter(cls.model_session.course.IN(real_list))
+        if date_from:
+            sessions = sessions.filter(cls.model_session.start_date >= date_from)
+        if date_to:
+            sessions = sessions.filter(cls.model_session.start_date <= date_to)
+        if session_type:
+            sessions = sessions.filter(cls.model_session.session_type == session_type)
+        return cls.__get(sessions, **kwargs)
+
+    @classmethod
+    def get_club_sessions(cls, club, date_from=None, date_to=None, session_type=None, status=None, **kwargs):
+        '''
+        all the session of a club, use when the user is the owner.
+
+        :param club:
+        :param date_from:
+        :param date_to:
+        :param session_type:
+        :param status:
+        :param kwargs:
+        :return:
+        '''
+        courses = cls.get_club_courses(club)
+        sessions = []
+        for course in courses:
+            sessions.append(cls.get_course_sessions(course, date_from, date_to, session_type, status, **kwargs))
+        return sessions
 
     # [END] Session
 
@@ -410,22 +516,44 @@ class APIDB():
         return True, model
 
     @classmethod
-    def __get(cls, o, size=-1, paginated=False, page=1, count_only=False, projection=None):  # pragma: no cover
+    def __get(cls, o, size=-1, paginated=False, page=0, count_only=False,
+              **kwargs):  # pragma: no cover
         """
-        Implements the get
-        e.g.
-        .__get(o) get all members
-        .__get(o, 10) get 10 trainers
-        .__get(o, count_only=True) returns the number of members
-        .__get(o, paginated=True) get paginated results,
-        for paginated: can also specify size (of the page)and page (starting point)
-        .__get(o, paginated=True,size=5,page=..)
+        Implements the get of the query or of a list of objects.
+
+        It accepts server parameters to cover various scopes::
+
+            # get all members
+            cls.__get(o)
+            # get 10 trainers
+            cls.__get(o, 10)
+            # returns the number of members
+            cls.__get(o, count_only=True)
+            # get paginated results,for paginated
+            cls.__get(o, paginated=True)
+            # can also specify size (of the page) and page(starting point)
+            cls.__get(o, paginated=True,size=5,page=1)
+
+
+        The function can be used to retrieve:
+
+        - Query,
+        - list of ``Key`` (see :py:meth:`._APIDB__get_multi_if_needed`)
+        - or relational data, belonging to a M2M relationship with a support table. \
+(see :py:meth:`._APIDB__get_relation`)
+
         :param o: the object
         :param paginated: if the result has to be paginated
-        :param size: the size of the page or of the number of elements to retrive
+        :param size: the size of the page or of the number of elements to retreive
         :param page: the starting page number
         :param count_only: if true, return the count
-        :return: the list of objects, next_page token, if has next page, size; or the object in case it's one
+        :param kwargs: remaining args that are generally used for the relationship, thus they can be 'projection' and 'merge'
+
+        :return:
+
+            - a list of objects (if ``paginated = False``)
+            - a list of object, and the total number of elements (if ``paginated = True``)
+            - the total number of elements (if ``count_only = True``)
         """
 
         if type(o) == Query:
@@ -437,10 +565,10 @@ class APIDB():
                 # if it's a query, then use fetch
                 # if isinstance(o, ndb.Query):
                 if size == -1:
-                    return cls.__get_relation_if_needed(o.fetch(), projection)
+                    return cls.__get_relation_if_needed(o.fetch(), **kwargs)
                 if size == 0:
                     return []
-                return cls.__get_relation_if_needed(o.fetch(size), projection)
+                return cls.__get_relation_if_needed(o.fetch(size), **kwargs)
                 # else:
                 # logging.debug("Type %s %s", type(o), o)
                 # raise Exception("Type not found %s %s" % (type(o), o))
@@ -454,10 +582,10 @@ class APIDB():
                 # if size > 99:
                 # size = 100
                 # compute the offset, if not set it's 0.
-                offset = (page - 1) * size
+                offset = page * size
                 # NOTE: this is slower then using the cursor
                 # http://youtu.be/xZsxWn58pS0?t=51m9s
-                data = cls.__get_relation_if_needed(o.fetch(size, offset=offset), projection)
+                data = cls.__get_relation_if_needed(o.fetch(size, offset=offset), **kwargs)
                 return data, o.count()
         elif type(o) == list:
             # in case it's a list
@@ -471,7 +599,7 @@ class APIDB():
             else:
                 if size == -1:
                     size = cfg.PAGE_SIZE
-                offset = (page - 1) * size
+                offset = page * size
                 start = offset if offset < len(o) else len(o)
                 end = offset + size if offset + size < len(o) else len(o)
                 data = o[start:end]
@@ -482,38 +610,38 @@ class APIDB():
     def __get_multi_if_needed(cls, l):  # pragma: no cover
         '''
         if it's a list of keys then do a get multi
-        :param l:
-        :return:
+
+        :param l: the list of keys
+        :return: the list of objects
         '''
+        if not l:
+            return l
         if type(l[0]) == Key:
             return ndb.get_multi(l)
         else:
             return l
 
-
     @classmethod
-    def __get_relation_if_needed(cls, result, projection):  # pragma: no cover
+    def __get_relation_if_needed(cls, result, projection=None, merge=None):  # pragma: no cover
         '''
-        This checks if the query is a relations query.
-        :param result:
-        :return:
-        '''
-        if not projection:
-            return result
-        if not result:
-            return result
-        return cls.__get_relation(result, projection)
+        it gets the results from a list of relation that comes from the support table of an M2M rel.
 
+        this function automatically gets the relation using the projection parameter.
+        If the merge value (string) is specified, it adds to the resulting object the support table in that field
 
-    @classmethod
-    def __get_relation(cls, result, field):  # pragma: no cover
-        '''
-        it retrives the results from the relation.
-        :param result:
-        :param field:
-        :return:
+        CourseSubscription with ``projection = member`` will return a list of ``user``s.
+        If the ``merge`` is set, and for example it's set as ``merge="relation"`` then each ``user`` in the
+        list will have ``relation`` property that is its ``CourseSubscription`` object. This property
+        can be accessed via ``user.relation`` and **it's not stored into the db**.
+
+        :param result: the result of the query
+        :param projection: the field to use for getting back the data
+        :param merge: the field where the relation is added (optional)
+        :return: the list of objects
         '''
         # empty list
+        if not projection:
+            return result
         if not result:
             return result
         # it's count
@@ -526,10 +654,16 @@ class APIDB():
         else:
             # it's paginated
             relations, total = result
-        # retreive all the users
-        keys = [getattr(r, field) for r in relations]
+        # retreive all the keys with the specified fileds.
+        keys = [getattr(r, projection) for r in relations]
         res = ndb.get_multi(keys)
-
+        # here we can acually do a merge if we want to keep some data from the middle table.
+        if merge:
+            i = 0
+            for item in res:
+                # this may be dangerous if the oreder is not the same, but it should not happen
+                setattr(item, merge, relations[i])
+                i += 1
         # if paginated return the total, otherwise just the items
         if total:
             # paginated

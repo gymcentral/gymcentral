@@ -13,7 +13,7 @@ def __club_role(user, club, roles):
     if rel.membership_type not in roles:
         raise AuthenticationError("user has not the role (%s) in the club" % roles)
     if not rel.is_active:
-        raise AuthenticationError("user has not the role (%s) in the club" % roles)
+        raise AuthenticationError("user relationship is inactive")
     return True
 
 
@@ -21,20 +21,31 @@ def __course_role(user, course, roles):
     test_passed = False
     if "MEMBER" in roles:
         rel = CourseSubscription.get_by_id(user, course)
+        print rel is None
         if rel is None:
             raise AuthenticationError("user is not member of the course")
         if not rel.is_active:
-            raise AuthenticationError("user has not member of the course" % roles)
+            raise AuthenticationError("user is not ACTIVE member of the course")
         test_passed = True
     if "TRAINER" in roles:
         rel = CourseTrainers.get_by_id(user, course)
         if rel is None:
             raise AuthenticationError("user is not trainer of the course")
         if not rel.is_active:
-            raise AuthenticationError("user has not trainer of the course" % roles)
+            raise AuthenticationError("user is not ACTIVE trainer of the course")
+        test_passed = True
+    if "OWNER" in roles:
+        # in case this rises and exception.
+        __club_role(user, course.club, ['OWNER'])
         test_passed = True
     if not test_passed:
         raise AuthenticationError("Role (%s) is not permitted for course" % roles)
+
+
+def __club_membership_role(user, club, roles):
+    role = user.membership_type(club)
+    if role not in roles:
+        raise AuthenticationError("You are not trainer nor owner of this club")
 
 
 def user_has_role(roles=[]):
@@ -62,6 +73,12 @@ def user_has_role(roles=[]):
                 elif isinstance(obj, Course):
                     __course_role(req.user, obj, roles)
                 elif isinstance(obj, Session):
+                    __course_role(req.user, obj.course, roles)
+                elif isinstance(obj, ClubMembership):
+                    # TODO: check if this condition is enough for everybody
+                    __club_membership_role(req.user, obj.club, roles)
+                elif isinstance(obj, CourseSubscription):
+                    # TODO: check if this condition is enough for everybody
                     __course_role(req.user, obj.course, roles)
                 else:
                     raise AuthenticationError("Object has not role")

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from gymcentral.exceptions import ServerError
-from models import Course, Session, ExercisePerformance, Exercise, Level, CourseSubscription
+from models import Course, Session, Performance, Exercise, Level, CourseSubscription, Participation, TimeData
 
 
 __author__ = 'stefano'
@@ -37,7 +37,7 @@ class NDBTestCase(unittest.TestCase):
                                  training_type=["balance", "stability"], tags=["test", "trento"])
         club = APIDB.create_club(name="test2", email="test2@test.com", description="desc", url="example.com",
                                  training_type=["balance"], tags=["test", "trento"])
-        print APIDB.get_clubs(size=0, paginated=True)
+        # print APIDB.get_clubs(size=0, paginated=True)
         self.assertEqual(0, len(APIDB.get_clubs(size=0, paginated=True)[0]))
         self.assertEqual(0, len(APIDB.get_clubs(size=0)))
         self.assertEqual(club, APIDB.get_club_by_id(club.id), "Club with id not found")
@@ -67,7 +67,7 @@ class NDBTestCase(unittest.TestCase):
                           avatar="..", unique_properties=['username'])
 
         self.assertEqual(member.username, APIDB.get_user_by_id(member.id).username, "User is wrong")
-        APIDB.add_member_to_club(member, club)
+        APIDB.add_member_to_club(member, club, status="ACCEPTED")
         self.assertEqual("MEMBER", APIDB.get_user_club_role(member, club), "Role is wrong")
         self.assertEqual(club, APIDB.get_user_member_of(member)[0], "Member of is wrong")
         # create another club
@@ -75,18 +75,18 @@ class NDBTestCase(unittest.TestCase):
                                   training_type=["balance2", "stability2"], tags=["test2", "trento2"])
         # we test the pagianted, it's 4 elements: items, cursor, has-next, size
         # calls the second page and returns the first element of the items, thus club2
-        self.assertEqual(club2, APIDB.get_clubs(paginated=True, size=1, page=2)[0][0])
+        self.assertEqual(club2, APIDB.get_clubs(paginated=True, size=1, page=1)[0][0])
         self.assertEqual(club, APIDB.get_clubs(paginated=True, size=-1)[0][0])
         self.assertEqual(club, APIDB.get_clubs(size=1)[0])
 
-        APIDB.add_member_to_club(member, club2)
+        APIDB.add_member_to_club(member, club2, status="ACCEPTED")
 
         self.assertEqual(1, APIDB.get_club_members(club2, count_only=True),
                          "Error in the members, there should be only one")
 
         member2 = APIDB.create_user("own:" + "member2", username="member2", fname="member2", sname="member2",
                                     avatar="..", unique_properties=['username'])
-        APIDB.add_member_to_club(member2, club)
+        APIDB.add_member_to_club(member2, club, status="ACCEPTED")
         # total is the same as len
         self.assertEqual(2, APIDB.get_club_members(club, count_only=True),
                          "Error in the members, there should be two users")
@@ -95,7 +95,7 @@ class NDBTestCase(unittest.TestCase):
                          "Error in the members, there should be two users")
 
         trainer = APIDB.create_user("own:" + "trainer", username="trainer", unique_properties=['username'])
-        APIDB.add_trainer_to_club(trainer, club)
+        APIDB.add_trainer_to_club(trainer, club, status="ACCEPTED")
         self.assertEqual(1, len(APIDB.get_club_trainers(club)), "There's only a trainer")
         self.assertEqual(1, len(APIDB.get_user_trainer_of(trainer)), "He's not a trainer of only 1 club")
         self.assertEqual("MEMBER", APIDB.get_type_of_membership(member, club), "Should be a member")
@@ -119,12 +119,12 @@ class NDBTestCase(unittest.TestCase):
 
         member = APIDB.create_user("own:" + "member", username="member", fname="test", sname="test", avatar="..",
                                    unique_properties=['username'])
-        APIDB.add_member_to_club(member, club)
+        APIDB.add_member_to_club(member, club, status="ACCEPTED")
         member2 = APIDB.create_user("own:" + "member2", username="member2", fname="member2", sname="member2",
                                     avatar="..", unique_properties=['username'])
 
         trainer = APIDB.create_user("own:" + "trainer", username="trainer", unique_properties=['username'])
-        APIDB.add_trainer_to_club(trainer, club)
+        APIDB.add_trainer_to_club(trainer, club, status="ACCEPTED")
 
         course = Course(name="test course", description="test course", club=club.key)
         course.put()
@@ -139,6 +139,7 @@ class NDBTestCase(unittest.TestCase):
         self.assertEqual(2, len(APIDB.get_club_members(club)), "The user was not subscribed to club")
         APIDB.add_trainer_to_course(trainer, course)
         self.assertEqual(2, APIDB.get_course_subscribers(course, count_only=True), "The are not two subscribers")
+        print APIDB.get_course_subscribers(course, merge="subscription")
         APIDB.rm_member_from_course(member, course)
         self.assertEqual(1, APIDB.get_course_subscribers(course, count_only=True), "Remove subscriber does not work")
         self.assertEqual(1, APIDB.get_course_trainers(course, count_only=True), "The is no one trainer")
@@ -150,6 +151,7 @@ class NDBTestCase(unittest.TestCase):
         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
                                  training_type=["balance", "stability"], tags=["test", "trento"])
         member = APIDB.create_user("own:" + "member", username="member", fname="test", sname="test", avatar="..",
+                                   email="",
                                    unique_properties=['username'])
         APIDB.add_member_to_club(member, club)
         course = Course(name="test course", description="test course", club=club.key)
@@ -201,7 +203,7 @@ class NDBTestCase(unittest.TestCase):
         session.profile = [[{"activityId": ex.id, "level": 2}]]
         # self.assertEqual(None, APIDB.get_user_level_for_activity(member, ex, session), "Level is wrong")
         self.assertRaises(ServerError, APIDB.get_user_level_for_activity, member, ex, session)
-        session.profile=[[{"activityId": 0, "level": 10}]]
+        session.profile = [[{"activityId": 0, "level": 10}]]
         session.put()
         self.assertRaises(ServerError, APIDB.get_user_level_for_activity, member, ex, session)
 
@@ -209,11 +211,14 @@ class NDBTestCase(unittest.TestCase):
         self.assertEqual("FINISHED", session.status, "Status is wrong")
         level = Level(level_number=1)
         level.put()
-        performance = ExercisePerformance(user=member.key, session=session.key, level=level.key)
+        performance = Performance(user=member.key, session=session.key, level=level.key)
         performance.put()
-        performance = ExercisePerformance(user=member.key, session=session.key, level=level.key)
+        performance = Performance(user=member.key, session=session.key, level=level.key)
         performance.put()
-        self.assertEqual(1, session.participation_count, "more participation then the one needed")
+        part = Participation(id=Participation.build_id(member, session), user=member.key, session=session.key,
+                             score=50.2, when=[TimeData(start=datetime.now(), end=datetime.now())])
+        part.put()
+        self.assertEqual(1, APIDB.user_participation_details(member, session, count_only=True))
         self.assertEqual(1, APIDB.get_session_im_subscribed(member, club, count_only=True), "session i'm subscribed to")
         self.assertEqual(0, APIDB.get_session_im_subscribed(member, club, date_from=datetime.now(),
                                                             count_only=True), "session i'm subscribed to")
@@ -261,12 +266,17 @@ class NDBTestCase(unittest.TestCase):
         level = Level(level_number=1)
         level.put()
         self.assertEqual(0, APIDB.session_completeness(member, session), "Completeness is not correct")
-        performance = ExercisePerformance(user=member.key, session=session.key, level=level.key)
+        performance = Performance(user=member.key, session=session.key, level=level.key)
         performance.put()
-        self.assertEqual(50, APIDB.session_completeness(member, session), "Completeness is not correct")
-        performance = ExercisePerformance(user=member.key, session=session.key, level=level.key)
-        performance.put()
-        self.assertEqual(50, APIDB.session_completeness(member, session), "Completeness is not correct")
+        part = Participation(id=Participation.build_id(member, session), user=member.key, session=session.key,
+                             score=50.0, when=[TimeData(start=datetime.now(), end=datetime.now())])
+        part.put()
+        self.assertEqual(50.0, APIDB.session_completeness(member, session), "Completeness is not correct")
+        part = Participation(id=Participation.build_id(member, session), user=member.key, session=session.key,
+                             score=50.2, when=[TimeData(start=datetime.now(), end=datetime.now())])
+        part.put()
+        self.assertEqual(50.2, APIDB.session_completeness(member, session), "Completeness is not correct")
+        self.assertEqual(1, APIDB.user_participation_details(member, session, count_only=True))
 
         member2 = APIDB.create_user("own:" + "member2", username="member2", fname="member2", sname="member2",
                                     avatar="..", unique_properties=['username'])
@@ -294,7 +304,7 @@ class NDBTestCase(unittest.TestCase):
                                  training_type=["balance", "stability"], tags=["test", "trento"])
         ex = Exercise(created_for=club.key, levels=[l1, l2, l3, l4, l5])
         ex.put()
-        resl = APIDB.get_activity_levels(ex, paginated=True, page=2, size=2)
+        resl = APIDB.get_activity_levels(ex, paginated=True, page=1, size=2)
         self.assertEqual([l3, l4], resl[0], "result of paginated list is wrong")
         resl = APIDB.get_activity_levels(ex, paginated=True)
         self.assertEqual([l1, l2, l3, l4, l5], resl[0], "result of paginated list is wrong")

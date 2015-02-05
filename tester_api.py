@@ -6,7 +6,8 @@ from api_db_utils import APIDB
 from gymcentral.auth import GCAuth
 from gymcentral.gc_utils import date_to_js_timestamp
 from api import app
-from models import Course, Level, Exercise, Session, CourseSubscription, ExercisePerformance, Indicator, PossibleAnswer
+from models import Course, Level, Exercise, Session, CourseSubscription, Performance, Indicator, PossibleAnswer, \
+    TimeData, Participation
 
 
 __author__ = 'stefano'
@@ -15,7 +16,6 @@ import logging
 import logging.config
 import unittest
 from google.appengine.ext import testbed
-
 
 
 class APIestCase(unittest.TestCase):
@@ -66,7 +66,7 @@ class APIestCase(unittest.TestCase):
         response = self.app.get('/api/trainee/users/current', headers=self.auth_headers)
         assert response.json['id'] == self.user.id
         indata = dict(name="edit name")
-        response =self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers)
+        response = self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers)
         self.logger.debug(response.json)
         assert response.json['name'] == "edit name"
         assert response.json['id'] == self.user.id
@@ -82,6 +82,11 @@ class APIestCase(unittest.TestCase):
         self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers, status=400)
         indata = dict(thisisnothere=123)
         self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers, status=400)
+
+
+    # COACH
+
+
 
     def test_club(self):
         # test the club
@@ -101,41 +106,43 @@ class APIestCase(unittest.TestCase):
 
         response = self.app.get('/api/trainee/clubs')
         assert response.json['total'] == 3
-        response = self.app.get('/api/trainee/clubs?size=2&page=2')
+        response = self.app.get('/api/trainee/clubs?size=2&page=1')
         assert response.json['results'][0]['name'] == "test3"
         # this implictly check the status
         response = self.app.get('/api/trainee/clubs?member=true', status=401)
         assert response.json['error']['message'] == "Authentication Error: member is set but user is missing"
-        APIDB.add_member_to_club(self.user, club)
+        APIDB.add_member_to_club(self.user, club, status="ACCEPTED")
         response = self.app.get('/api/trainee/clubs?member=true', headers=self.auth_headers)
         assert response.status_code == 200
         assert response.json['total'] == 1
 
-    def test_membership(self):
+    def test_memberships(self):
         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
                                  training_type=["balance", "stability"], tags=["test", "trento"])
         # add a memb
-        APIDB.add_member_to_club(self.user, club)
+        APIDB.add_member_to_club(self.user, club, status="ACCEPTED")
         # create another club
-        self.app.get('/api/trainee/clubs/%s/membership' % 0, headers=self.auth_headers, status=404)
-        response = self.app.get('/api/trainee/clubs/%s/membership' % club.id, headers=self.auth_headers)
+        self.app.get('/api/trainee/clubs/%s/memberships' % 0, headers=self.auth_headers, status=404)
+        response = self.app.get('/api/trainee/clubs/%s/memberships' % club.id, headers=self.auth_headers)
         assert response.json['total'] == 1
-        response = self.app.get('/api/trainee/clubs/%s/membership?role=MEMBER' % club.id, headers=self.auth_headers)
+        response = self.app.get('/api/trainee/clubs/%s/memberships?role=MEMBER' % club.id, headers=self.auth_headers)
         assert response.json['results'][0]['nickname'] == 'member'
-        APIDB.add_trainer_to_club(self.trainer, club)
-        response = self.app.get('/api/trainee/clubs/%s/membership?size=1&page=2' % club.id, headers=self.auth_headers)
+        APIDB.add_trainer_to_club(self.trainer, club, status="ACCEPTED")
+        response = self.app.get('/api/trainee/clubs/%s/memberships?size=1&page=1' % club.id, headers=self.auth_headers)
         assert response.json['results'][0]['name'] == 'trainer'
-        response = self.app.get('/api/trainee/clubs/%s/membership?role=TRAINER' % club.id, headers=self.auth_headers)
+        response = self.app.get('/api/trainee/clubs/%s/memberships?role=TRAINER' % club.id, headers=self.auth_headers)
         # this is not a real good test, it depends on how api add results, it does adding members, owners, trainers
         assert response.json['results'][0]['name'] == 'trainer'
         APIDB.add_owner_to_club(self.owner, club)
-        response = self.app.get('/api/trainee/clubs/%s/membership?role=OWNER' % club.id, headers=self.auth_headers)
+        response = self.app.get('/api/trainee/clubs/%s/memberships?role=OWNER' % club.id, headers=self.auth_headers)
         assert response.json['results'][0]['name'] == 'owner'
-        self.app.get('/api/trainee/clubs/%s/membership?role=NOPE' % club.id, headers=self.auth_headers, status=400)
+        self.app.get('/api/trainee/clubs/%s/memberships?role=NOPE' % club.id, headers=self.auth_headers, status=400)
+        response = self.app.get('/api/trainee/clubs/%s/memberships' % club.id, headers=self.auth_headers)
+        assert response.json['total'] == 3
         APIDB.rm_owner_from_club(self.owner, club)
         APIDB.rm_member_from_club(self.user, club)
         APIDB.rm_trainer_from_club(self.trainer, club)
-        response = self.app.get('/api/trainee/clubs/%s/membership' % club.id, headers=self.auth_headers)
+        response = self.app.get('/api/trainee/clubs/%s/memberships' % club.id, headers=self.auth_headers)
         assert response.json['total'] == 0
 
 
@@ -143,13 +150,12 @@ class APIestCase(unittest.TestCase):
         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
                                  training_type=["balance", "stability"], tags=["test", "trento"])
 
-
-        APIDB.add_member_to_club(self.user, club)
+        APIDB.add_member_to_club(self.user, club, status="ACCEPTED")
         member2 = APIDB.create_user("own:" + "member2", nickname="member2", name="test2", gender="m", avatar="..",
                                     birthday=datetime.now(), country='Italy', city='TN', language='en',
                                     picture='..', email='user2@test.com', phone='2313213', active_club=None,
                                     unique_properties=['email'])
-        APIDB.add_trainer_to_club(self.trainer, club)
+        APIDB.add_trainer_to_club(self.trainer, club, status="ACCEPTED")
         course = Course(name="test course", description="test course", club=club.key,
                         end_date=datetime.now() + timedelta(minutes=1))
         course.put()
@@ -179,6 +185,7 @@ class APIestCase(unittest.TestCase):
         APIDB.rm_member_from_course(self.user, course)
         self.app.get('/api/trainee/courses/%s' % course.id, status=401, headers=self.auth_headers)
         self.app.get('/api/trainee/courses/%s/subscribers' % course.id, status=401, headers=self.auth_headers)
+
     #
     #
     def test_sessions(self):
@@ -197,17 +204,20 @@ class APIestCase(unittest.TestCase):
         course.put()
 
         session = Session(name="session test", session_type="JOINT", course=course.key,
-                          start_date=(datetime.now() - timedelta(hours=2)),
-                          end_date=(datetime.now() - timedelta(minutes=1)),
+                          start_date=datetime.now(),
+                          end_date=(datetime.now() + timedelta(hours=2)),
                           list_exercises=[ex.key, ex2.key],
                           profile=[[{"activityId": ex.id, "level": 10}]])
         session.put()
 
         self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=401)
         self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=401, headers=self.auth_headers)
-        APIDB.add_member_to_course(self.user, course, "ACCEPTED")
+        APIDB.add_member_to_course(self.user, course, status="ACCEPTED")
         self.app.get('/api/trainee/courses/%s/sessions' % 0, status=404, headers=self.auth_headers)
-        response = self.app.get('/api/trainee/courses/%s/sessions' % course.id, headers=self.auth_headers)
+        response = self.app.get('/api/trainee/courses/%s/sessions?from=%s&to=%s' % (
+        course.id, date_to_js_timestamp(datetime.now()), date_to_js_timestamp(datetime.now() + timedelta(hours=2))),
+                                headers=self.auth_headers)
+        assert response.json['results'][0]['name'] == "session test"
         APIDB.rm_member_from_course(self.user, course)
         self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=401)
         self.app.get('/api/trainee/courses/%s/sessions' % course.id, status=401, headers=self.auth_headers)
@@ -266,15 +276,18 @@ class APIestCase(unittest.TestCase):
         cs.profile_level = 1
         cs.put()
 
-        performance = ExercisePerformance(user=self.user.key, session=session.key, level=l1.key)
+        performance = Performance(user=self.user.key, session=session.key, level=l1.key)
         performance.put()
         response = self.app.get('/api/trainee/clubs/%s/sessions?from=%s' % (club.id, "ciao"), status=400,
                                 headers=self.auth_headers)
+        part = Participation(id=Participation.build_id(self.user, session), user=self.user.key, session=session.key,
+                             score=50.0, when=[TimeData(start=datetime.now(), end=datetime.now())])
+        part.put()
         response = self.app.get('/api/trainee/clubs/%s/sessions?from=%s&to=%s' % (
             club.id, date_to_js_timestamp(datetime.now()), date_to_js_timestamp(datetime.now() + timedelta(hours=2))),
                                 headers=self.auth_headers)
-        assert response.json['results'][0]['noOfParticipations'] == 1
-
+        assert response.json['results'][0]['participationCount'] == 1
+        assert response.json['results'][0]['maxScore'] == 50.0
         self.app.get('/api/trainee/sessions/%s' % session.id, status=401)
         APIDB.rm_member_from_course(self.user, course)
         self.app.get('/api/trainee/sessions/%s' % session.id, status=401, headers=self.auth_headers)
@@ -283,28 +296,6 @@ class APIestCase(unittest.TestCase):
 
         response = self.app.get('/api/trainee/sessions/%s' % session.id, headers=self.auth_headers)
         assert response.json['activities'][0]['indicators'][0]['possibleAnswers'][0]['name'] == 'test'
-
-    # level = Level(level_number=1)
-    # level.put()
-    # self.assertEqual(0, APIDB.session_completeness(self.user, session), "Completeness is not correct")
-    # performance = ExercisePerformance(user=self.user.key, session=session.key, level=level.key)
-    # performance.put()
-    # self.assertEqual(50, APIDB.session_completeness(self.user, session), "Completeness is not correct")
-    # performance = ExercisePerformance(user=self.user.key, session=session.key, level=level.key)
-    # performance.put()
-    # self.assertEqual(50, APIDB.session_completeness(self.user, session), "Completeness is not correct")
-    #
-    # member2 = APIDB.create_user("own:" + "member2", nickname="member2", name="test2", gender="m", avatar="..",
-    # birthday=datetime.now(), country='Italy', city='TN', language='en',
-    # picture='..', email='user2@test.com', phone='2313213', active_club=None,
-    # unique_properties=['email'])
-    # self.assertEqual(0, APIDB.session_completeness(member2, session), "Completeness is not correct")
-    #
-    # self.assertTrue(APIDB.user_participated_in_session(member, session))
-    # self.assertFalse(APIDB.user_participated_in_session(member2, session))
-    #
-    # APIDB.rm_activity_from_session(session, ex)
-    # self.assertEqual(1, session.activity_count, "Activity are incorrect")
 
 
     if __name__ == '__main__':
