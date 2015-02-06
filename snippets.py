@@ -1,19 +1,15 @@
-from datetime import datetime
 import logging
 import logging.config
-import webtest
-from api import app
 
 from api_db_utils import APIDB
-from gymcentral.auth import GCAuth
-from models import User
+from models import Level, Detail
 
 
 __author__ = 'stefano'
 
 import unittest
 
-from google.appengine.ext import testbed, ndb
+from google.appengine.ext import testbed
 
 logging.config.fileConfig('logging.conf')
 logger = logging.getLogger('myLogger')
@@ -36,8 +32,9 @@ class NDBTestCase(unittest.TestCase):
 
 
     def test_snippet(self):
-        # club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
-        #                          training_type=["balance", "stability"], tags=["test", "trento"])
+        club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
+                                 training_type=["balance", "stability"], tags=["test", "trento"])
+
 
         # d = Detail(created_for=club.key, name="123", description="12")
         # ds = [dict(detail=d.to_dict(), value=2), dict(d.to_dict(), value=14)]
@@ -88,7 +85,7 @@ class NDBTestCase(unittest.TestCase):
         # session.put()
         #
         # member = APIDB.create_user("own:" + "member", username="member", fname="test",
-        #                            sname="test", avatar="..", unique_properties=['username'], email="ste@ste.com")
+        # sname="test", avatar="..", unique_properties=['username'], email="ste@ste.com")
         # print User.get_by_auth_id("own:" + "member")
         # print User.query(User.email=="ste@ste.com").fetch()
         # print User.query(ndb.GenericProperty('fname') == 'test').fetch()
@@ -107,17 +104,29 @@ class NDBTestCase(unittest.TestCase):
         # print performance.key.id()
         # print performance2.key.id()
 
-        user = APIDB.create_user("own:" + "member", nickname="member", name=[], gender="m", avatar="",
-                                      birthday=datetime.now(), country='Italy', city='TN', language='en',
-                                      picture='..', email='user@test.com', phone='2313213', active_club=None,
-                                      unique_properties=['email'])
+        # user = APIDB.create_user("own:" + "member", nickname="member", name=[], gender="m", avatar="",
+        #                               birthday=datetime.now(), country='Italy', city='TN', language='en',
+        #                               picture='..', email='user@test.com', phone='2313213', active_club=None,
+        #                               unique_properties=['email'])
+        #
+        # token = GCAuth.auth_user_token(user)
+        # # auth_headers = {'Authorization': str('Token %s' % token)}
+        # cookie = GCAuth.get_secure_cookie(token)
+        # app2 = webtest.TestApp(app)
+        # # app2.set_cookie('gc_token',cookie)
+        # auth_headers = {'Authorization': str('Token %s' % "5733953138851840|VPxIKtfCXlk5I6n0R7Uaze")}
+        #
+        # response = app2.get('/api/trainee/users/current', headers=auth_headers)
+        # print response
 
-        token = GCAuth.auth_user_token(user)
-        # auth_headers = {'Authorization': str('Token %s' % token)}
-        cookie = GCAuth.get_secure_cookie(token)
-        app2 = webtest.TestApp(app)
-        # app2.set_cookie('gc_token',cookie)
-        auth_headers = {'Authorization': str('Token %s' % "5733953138851840|VPxIKtfCXlk5I6n0R7Uaze")}
 
-        response = app2.get('/api/trainee/users/current', headers=auth_headers)
-        print response
+        l = Level(level_number=1)
+        d = Detail(created_for=club.key, name="test", description="test", detail_type="bo")
+        d.put()
+        l.put()
+        print l.details
+        l.add_detail(d, 12)
+        print l.details
+        l.add_detail(d, 1)
+        print l.to_dict()
+        pass

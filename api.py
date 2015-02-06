@@ -20,26 +20,23 @@ from gymcentral.gc_utils import sanitize_json, sanitize_list, json_from_paginate
     json_from_request, date_to_js_timestamp
 from models import User, Club, Course, Source, Level, Indicator, PossibleAnswer, Exercise, Session, CourseSubscription
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# my app
-
 class GCApp(WSGIApp):
-    # extended to load the value before the request
+    """
+    Extended version of the WSGIApp.
+
+    """
     @staticmethod
     def edit_request(router, request, response):  # pragma: no cover
+        """
+        Automatically loads into ``requst.model`` (``.model`` is set in ``cfg.MODEL_NAME``) the object reterived from
+        the parameter passed.
+
+        - The parameter **must** be a ``Key`` encoded as ``urlsafe``.
+        - The name of the parameter encoded into the url **must** start with ``uskey`` (which stands for UrlSafeKEY)
+
+        If the ``key`` does not exists it raises and exception.
+
+        """
         kwargs = router.match(request)[2]
         if kwargs:
             if len(kwargs) == 1:
@@ -139,6 +136,10 @@ def hw_post(req):  # pragma: no cover
 
 @app.route("/%s/auth/<provider>/<token>" % APP_TRAINEE, methods=('GET',))
 def auth(req, provider, token):  # pragma: no cover
+    """
+    This handles the authentication via social networks
+
+    """
     # the pragma no cover is to skip the testing on this method, which can't be tested
     # get user infos
     d_user, token, error = GCAuth.handle_oauth_callback(token, provider)
@@ -196,14 +197,17 @@ def auth(req, provider, token):  # pragma: no cover
 
 # ---------------------------------- TRAINEE ---------------------------------------
 
+
 @app.route('/%s/users/current' % APP_TRAINEE, methods=('GET',))
 @user_required
 def trainee_profile(req):
-    '''
-    Profile of the current user
-    :param req:
-    :return: profile of the current user
-    '''
+    """
+    |GET| @ |ta| + ``/user/current``
+
+    Profile of the current user.
+    |ul|
+    """
+
     # TODO: test
     out = ['id', 'name', 'nickname', 'gender', 'picture', 'avatar', 'birthday', 'country', 'city', 'language',
            'email', 'phone', 'active_club']
@@ -213,11 +217,12 @@ def trainee_profile(req):
 @app.route('/%s/users/current' % APP_TRAINEE, methods=('PUT',))
 @user_required
 def trainee_profile_update(req):
-    '''
+    """
     Update the profile
+
     :param req:
     :return: profile of the current user
-    '''
+    """
     j_req = json_from_request(req)
     update, user = APIDB.update_user(req.user, **j_req)
     out = ['id', 'name', 'nickname', 'gender', 'picture', 'avatar', 'birthday', 'country', 'city', 'language',
@@ -229,6 +234,7 @@ def trainee_profile_update(req):
 def trainee_club_list(req):
     """
     List of all the clubs, paginated
+
     :param req:
     :return:
     """
@@ -270,6 +276,7 @@ def trainee_club_list(req):
 def trainee_club_details(req, uskey_club):
     """
     gets the details of a club
+
     :param req:
     :param uskey_club: uskey_club of the club
     :return: the detail of the club
@@ -288,6 +295,7 @@ def trainee_club_details(req, uskey_club):
 def trainee_club_membership(req, uskey_club):
     """
     gets the list of members for a club
+
     :param req:
     :param id: id of the club
     :return:
@@ -596,9 +604,9 @@ def coach_profile(req):
 # items.append(j_club)
 # ret['results'] = sanitize_list(items,
 # ['id', 'name', 'description', 'url', 'creation_date', 'is_open', 'tags', 'owners',
-#                                     'member_count', 'course_count'])
+# 'member_count', 'course_count'])
 #
-#     ret['total'] = total
+# ret['total'] = total
 #     return ret
 
 
@@ -769,7 +777,7 @@ def coach_club_session_list(req, uskey_club):
     return dict(total=total, results=res_list)
 
 
-@app.route('/%s/courses/<uskey_course>/subscription' % APP_COACH, methods=('GET',))
+@app.route('/%s/courses/<uskey_course>/subscribers' % APP_COACH, methods=('GET',))
 @user_has_role(["TRAINER", "OWNER"])
 def coach_course_subscribers(req, uskey_course):
     course = req.model
@@ -780,7 +788,7 @@ def coach_course_subscribers(req, uskey_course):
     subscribers, total = APIDB.get_course_subscribers(course, paginate=True, page=page, size=size, merge="subscription")
     res = []
     for subscriber in subscribers:
-        res_subscriber = sanitize_json(subscriber, allowed=['id', 'name', 'picture'])
+        res_subscriber = sanitize_json(subscriber, allowed=['id', 'name', 'picture', 'nickname'])
         # get the "merged" field and append it to the main object.
         res_subscription = sanitize_json(subscriber.subscription,
                                          allowed=['creation_date', 'observations', 'profile_level'])
@@ -788,11 +796,25 @@ def coach_course_subscribers(req, uskey_course):
     return dict(results=res, total=total)
 
 
-# @app.route('/%s/subscription/<uskey_subscription>' % APP_COACH, methods=('GET',))
-# @user_has_role(["TRAINER", "OWNER"])
-# def coach_subscription_detail(req, uskey_subscription):
-#     subscription = req.model
-#     ret = subscription.to_dict()
-#     ret['user'] = sanitize_json(req.user, allowed=['id', 'name', 'picture'])
-#     return sanitize_json(ret, allowed=['user', 'creation_date', 'observations', 'profile_level'])
+@app.route('/%s/clubs/<uskey_club>/activities' % APP_COACH, methods=('GET',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_club_activities(req, uskey_club):
+    club = req.model
+    j_req = json_from_paginated_request(req)
+    page = int(j_req['page'])
+    size = int(j_req['size'])
+    exercises, total = APIDB.get_club_activities(club, paginated=True, page=page, size=size)
+    ret = []
+    for exercise in exercises:
+        res_obj = exercise.to_dict()
+        res_obj['level_count'] = exercise.level_count
+        res_obj['indicator_count'] = exercise.indicator_count
+        ret.append(sanitize_json(res_obj, allowed=['id', 'name', 'level_count', 'indicator_count']))
+    return dict(results=ret, total=total)
 
+@app.route('/%s/activities/<uskey_club>' % APP_COACH, methods=('GET',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_activities_detail(req, uskey_club):
+    activity = req.model
+    # this should be enough. it's everything linked..
+    return activity.to_dict()

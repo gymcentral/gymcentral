@@ -1,9 +1,9 @@
 from datetime import datetime
 
 from google.appengine.api.datastore_errors import BadValueError
+from google.appengine.ext.ndb.key import Key
 
 from gymcentral.exceptions import AuthenticationError
-
 from gymcentral.gc_models import GCUser, GCModel, GCModelMtoMNoRep
 
 
@@ -83,10 +83,12 @@ class CourseTrainers(GCModelMtoMNoRep):
     is_active = ndb.BooleanProperty(default=True)
     creation_date = ndb.DateTimeProperty(auto_now=True)
 
+
 class Observation(GCModel):
     created_by = ndb.KeyProperty(kind='User')
     text = ndb.StringProperty()
     when = ndb.DateTimeProperty(auto_now=True)
+
 
 class CourseSubscription(GCModelMtoMNoRep):
     # http://docs.gymcentralapi.apiary.io/#reference/training-subscription
@@ -204,11 +206,11 @@ class Session(GCModel):
 
     # @property
     # def get_on_before(self):
-    #     return ndb.get_multi(self.on_before)
+    # return ndb.get_multi(self.on_before)
     #
     # @property
     # def get_on_after(self):
-    #     return ndb.get_multi(self.on_after)
+    # return ndb.get_multi(self.on_after)
     #
     # @property
     # def get_exercises(self):
@@ -300,10 +302,34 @@ class Level(GCModel):
     level_number = ndb.IntegerProperty(required=True)
     description = ndb.StringProperty()
     source = ndb.StructuredProperty(Source)
+    name = ndb.StringProperty()
     # here we store the Details and value in a list of objects.
     # it's not as possible answers where the value is set
     # here the details can be reused and value changes from time to time
-    details = ndb.JsonProperty()
+    # [{"indicator":Key,value:"value"},..]
+    # we do like this to enable updates of the indicators.
+    details_list = ndb.JsonProperty(default=[])
+
+    @property
+    def details(self):
+        ret = []
+        for detail in self.details_list:
+            indicator = Key(urlsafe=detail['indicator']).get()
+            # we make a copy, it's direct access to it..
+            d_indicator = indicator.to_dict()
+            d_indicator['value'] = detail['value']
+            ret.append(d_indicator)
+        return ret
+
+    def add_detail(self, detail, value):
+        self.details_list.append(dict(indicator=detail.key.urlsafe(), value=value))
+        self.put()
+
+    def to_dict(self):
+        result = super(Level, self).to_dict()
+        del result['details_list']
+        result['details'] = self.details
+        return result
 
 
 class TimeData(GCModel):
@@ -360,6 +386,18 @@ class Exercise(GCModel):
     def indicators(self):
         return ndb.get_multi(self.indicator_list)
 
+    @property
+    def level_count(self):
+        return len(self.levels)
+
+    @property
+    def indicator_count(self):
+        return len(self.indicator_list)
+
+    def to_dict(self):
+        result = super(Exercise, self).to_dict()
+        del result['created_for']
+        return result
         # in case we need the key of a structured property
         # def to_dict(self):
         # result = super(Exercise, self).to_dict()

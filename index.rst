@@ -9,15 +9,14 @@ Welcome to gymCentral's documentation!
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 10
 
-.. autoclass:: api_db_utils.APIDB
-   :members:
-   :private-members:
-   :special-members:
+   docs/app
+   docs/api
+   docs/db_utils
 
-.. automodule:: api
-   :members:
+
+
 
 
 Indices and tables

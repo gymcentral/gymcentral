@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.abspath('.'))
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
-    'sphinx.ext.coverage',
+    'sphinx.ext.extlinks',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -104,7 +104,13 @@ pygments_style = 'sphinx'
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = 'default'
+
+import sphinx_rtd_theme
+
+html_theme = "sphinx_rtd_theme"
+
+html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+# html_theme = 'haiku'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -278,3 +284,23 @@ texinfo_documents = [
 
 # If true, do not generate a @detailmenu in the "Top" node's menu.
 #texinfo_no_detailmenu = False
+
+extlinks = {'trainee_api': ('#',
+                      '/api/trainee'),
+            'coach_api': ('#',
+                      '/api/coach ')}
+
+#Project specific
+rst_epilog = """
+.. |GET| replace:: ``GET``
+.. |PUT| replace:: ``PUT``
+.. |POST| replace:: ``POST``
+.. |ul| replace:: ``User`` **must be logged in.**
+.. |urole| replace:: ``User``  **must be owner or trainer.**
+.. |ta| replace:: ``TRAINEE_URL``
+.. |ca| replace:: ``COACH_URL``
+"""
+
+
+
+

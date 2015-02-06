@@ -6,9 +6,18 @@ echo "Running test cases, see 'result.test' file for the results"
 #swtch to false for the production
 sed -i.backup -e 's/DEBUG = True/DEBUG = False/g' cfg.py
 if grep -q "OK" result.test; then
-    echo "Tests: ok"
-    echo "Updating server"
-    appcfg.py update .
+    echo "Tests: OK"
+    echo ""
+    echo "Creating documentation"
+    ./build_doc.sh >> doc_build.temp
+    if grep -q "build succeeded." doc_build.temp; then
+        echo "Documentation: OK"
+        echo ""
+        echo "Updating server"
+        appcfg.py update .
+    else
+        echo "Error during the building of documentation"
+    fi
 else
     echo "Error in test cases, cannot update"
 fi

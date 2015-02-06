@@ -1,7 +1,8 @@
+from decorator import decorator
 import cfg
 from gymcentral.auth import GCAuth
 from gymcentral.exceptions import AuthenticationError, NotFoundException
-from models import Club, ClubMembership, CourseSubscription, CourseTrainers, Course, Session
+from models import Club, ClubMembership, CourseSubscription, CourseTrainers, Course, Session, Exercise
 
 __author__ = 'stefano'
 
@@ -48,14 +49,15 @@ def __club_membership_role(user, club, roles):
         raise AuthenticationError("You are not trainer nor owner of this club")
 
 
-def user_has_role(roles=[]):
-    '''
-    wrapper to perform the checking of the role over the object
-    :param roles:
-    :return:
-    '''
+
+def user_has_role(roles):
     # this works only for gymcentral
+    @decorator
     def has_role_real(handler):
+        """
+        Checks if the user has the correct roles.
+
+        """
         def wrapper(req, *args, **kwargs):
             #
             if not hasattr(req, 'user'):
@@ -80,7 +82,10 @@ def user_has_role(roles=[]):
                 elif isinstance(obj, CourseSubscription):
                     # TODO: check if this condition is enough for everybody
                     __course_role(req.user, obj.course, roles)
+                elif isinstance(obj, Exercise):
+                    __club_role(req.user, obj.created_for, roles)
                 else:
+
                     raise AuthenticationError("Object has not role")
                 return handler(req, *args, **kwargs)
 

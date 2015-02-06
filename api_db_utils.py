@@ -23,6 +23,7 @@ class APIDB():
     model_session = models.Session
     model_performance = models.Performance
     model_participation = models.Participation
+    model_exercise = models.Exercise
 
 
     @classmethod
@@ -169,6 +170,8 @@ class APIDB():
             relation.is_active = False
             relation.put()
 
+
+
     # FIXME: what happens if the user is subscribed to courses? if we remove him, what if he re/subscribe?
 
 
@@ -215,7 +218,9 @@ class APIDB():
     def is_user_subscribed_to_club(cls, user, club):
         return ndb.Key(cls.model_club_user, cls.model_club_user.build_id(user, club)).get() is not None
 
-
+    @classmethod
+    def get_club_activities(cls, club, **kwargs):
+        return cls.__get(cls.model_exercise.query(cls.model_exercise.created_for==club.key), **kwargs)
     # [END] club
 
     # [START] Courses
@@ -662,8 +667,10 @@ class APIDB():
             i = 0
             for item in res:
                 # this may be dangerous if the oreder is not the same, but it should not happen
-                setattr(item, merge, relations[i])
-                i += 1
+                # we check if the index is the same, which should be.
+                if getattr(relations[i], projection) == item.key:
+                    setattr(item, merge, relations[i])
+                    i += 1
         # if paginated return the total, otherwise just the items
         if total:
             # paginated
