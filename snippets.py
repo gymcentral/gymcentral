@@ -1,8 +1,13 @@
+from datetime import datetime
+import json
 import logging
 import logging.config
+import webtest
 
 from api_db_utils import APIDB
-from models import Level, Detail
+from api_trainee import app
+
+from gymcentral.auth import GCAuth
 
 
 __author__ = 'stefano'
@@ -24,6 +29,27 @@ class NDBTestCase(unittest.TestCase):
         # Next, declare which service stubs you want to use.
         self.testbed.init_datastore_v3_stub()
         self.testbed.init_memcache_stub()
+        self.testbed.init_urlfetch_stub()
+        self.testbed.init_taskqueue_stub()
+        logger.debug("here we are")
+        self.app = webtest.TestApp(app)
+        # self.app_coach = webtest.TestApp(app_coach)
+
+        self.user = APIDB.create_user("own:" + "member", nickname="member", name="test", gender="m", avatar="..",
+                                      birthday=datetime.now(), country='Italy', city='TN', language='en',
+                                      picture='..', email='user@test.com', phone='2313213', active_club=None,
+                                      unique_properties=['email'])
+        # self.trainer = APIDB.create_user("own:" + "trainer", nickname="trainer", name="trainer", gender="m",
+        #                                  avatar="..",
+        #                                  birthday=datetime.now(), country='Italy', city='TN', language='en',
+        #                                  picture='..', email='trainer@test.com', phone='2313213', active_club=None,
+        #                                  unique_properties=['email'])
+        # self.owner = APIDB.create_user("own:" + "owner", nickname="owner", name="owner", gender="m", avatar="..",
+        #                                birthday=datetime.now(), country='Italy', city='TN', language='en',
+        #                                picture='..', email='owner@test.com', phone='2313213', active_club=None,
+        #                                unique_properties=['email'])
+        self.token = GCAuth.auth_user_token(self.user)
+        self.auth_headers = {'Authorization': str('Token %s' % self.token)}
         # check http://webtest.pythonpaste.org/en/latest/index.html for this
 
 
@@ -35,7 +61,39 @@ class NDBTestCase(unittest.TestCase):
         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
                                  training_type=["balance", "stability"], tags=["test", "trento"])
 
+        # resp = self.app.get('/api/admin/hw', headers=self.auth_headers)
+        # print resp
+        self.user.active_club = club.id
+        self.user.put()
+        # resp = self.app.get('/api/trainee/users/current', headers=self.auth_headers)
+        # print resp
+        resp = self.app.get('/api/trainee/clubs/current/members', headers=self.auth_headers)
+        print resp
+        resp = self.app.get('/api/trainee/clubs/%s/members'%club.id)
+        print resp
+        # resp = self.app_admin.get('/api/trainee/hw')
+        # print resp
+        # resp = self.app_admin.get('/api/coach/hw')
+        # print resp
 
+        # resp = self.app.get('/api/trainee/users/current', headers=self.auth_headers)
+        # print resp
+        # resp = self.app.get('/api/test/hw', headers=self.auth_headers)
+        # print resp
+        # course = APIDB.create_course(club, **dict(name="test",description="desc",course_type="FREE"))
+        # print course
+        # APIDB.update_course(course, **dict(course_type="PROGRAM",duration=12))
+        # print course
+        # profile = dict(a=1,b=2,c=3)
+        # j_profile = json.dumps(profile)
+        # print j_profile
+        # session = APIDB.create_session(course, **dict(name="test",profile = j_profile, week_no=1, day_no=1, session_type="JOINT"))
+        # print session.profile
+        # print json.dumps(session,  default=json_serializer)
+        # session.profile = profile
+        # session.put()
+        # print session.profile
+        # print json.dumps(session,  default=json_serializer)
         # d = Detail(created_for=club.key, name="123", description="12")
         # ds = [dict(detail=d.to_dict(), value=2), dict(d.to_dict(), value=14)]
         # print ds
@@ -120,13 +178,13 @@ class NDBTestCase(unittest.TestCase):
         # print response
 
 
-        l = Level(level_number=1)
-        d = Detail(created_for=club.key, name="test", description="test", detail_type="bo")
-        d.put()
-        l.put()
-        print l.details
-        l.add_detail(d, 12)
-        print l.details
-        l.add_detail(d, 1)
-        print l.to_dict()
-        pass
+        # l = Level(level_number=1)
+        # d = Detail(created_for=club.key, name="test", description="test", detail_type="bo")
+        # d.put()
+        # l.put()
+        # print l.details
+        # l.add_detail(d, 12)
+        # print l.details
+        # l.add_detail(d, 1)
+        # print l.to_dict()
+        # pass

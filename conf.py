@@ -285,18 +285,11 @@ texinfo_documents = [
 # If true, do not generate a @detailmenu in the "Top" node's menu.
 #texinfo_no_detailmenu = False
 
-extlinks = {'trainee_api': ('#',
-                      '/api/trainee'),
-            'coach_api': ('#',
-                      '/api/coach ')}
-
 #Project specific
 rst_epilog = """
-.. |GET| replace:: ``GET``
-.. |PUT| replace:: ``PUT``
-.. |POST| replace:: ``POST``
 .. |ul| replace:: ``User`` **must be logged in.**
-.. |urole| replace:: ``User``  **must be owner or trainer.**
+.. |uroleM| replace:: ``User``  **must be a Member.**
+.. |uroleOT| replace:: ``User``  **must be an Owner or Trainer.**
 .. |ta| replace:: ``TRAINEE_URL``
 .. |ca| replace:: ``COACH_URL``
 """

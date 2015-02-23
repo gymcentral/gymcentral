@@ -21,20 +21,21 @@ class APIDB():
     model_course_user = models.CourseSubscription
     model_course_trainers = models.CourseTrainers
     model_session = models.Session
-    model_performance = models.Performance
     model_participation = models.Participation
     model_exercise = models.Exercise
-
+    model_time_data = models.TimeData
+    model_performance = models.Performance
 
     @classmethod
     def create_user(cls, auth_id, unique_properties=None, **user_values):
         """
         Creates a user, wraps the user_create of the mode we use
 
-        :param auth_id:
-        :param unique_properties:
-        :param user_values:
-        :return:
+        :param auth_id: the id that identfies the user
+        :param unique_properties: list of properties that must be unique among users.
+        :param user_values: the dict object containing the user information
+        :return: The user object if created
+        :raises: ServerError
         """
         created, ret = cls.model_user.create_user(auth_id, unique_properties, **user_values)
         if not created:
@@ -45,52 +46,91 @@ class APIDB():
     @classmethod
     def update_user(cls, user, not_allowed=None, **user_values):
         """
-        Update a user
+        Updates a user
+        :py:meth:`._APIDB__update`
 
-        :param user:
-        :param not_allowed:
-        :param user_values:
-        :return:
+        :param user: The user object
+        :param not_allowed: list of properties that cannot be updated
+        :param user_values: dict containing the values to update
+        :return: Tuple -> Bool, User
         """
         return cls.__update(user, not_allowed=not_allowed, **user_values)
 
 
     @classmethod
     def get_user_by_id(cls, id_user):
-        '''
-        get the user by id
+        """
+        Gets the user by id
 
-        :param id_user:
-        :return:
-        '''
+        :param id_user: id of the user
+        :return: The user or `None`
+        """
         return cls.model_user.get_by_id(id_user)
 
 
     # [START] User
     @classmethod
     def get_user_member_of_type(cls, user, membership_type=[], **kwargs):
+        """
+        Gets the clubs in which the user has the specified membership
+
+        :param user: the user
+        :param membership_type: the list of possible memberships
+        :param kwargs: usual kwargs
+        :return: list of clubs
+        """
         kwargs['projection'] = 'club'
         return cls.__get(user.member_of_type(membership_type), **kwargs)
 
     @classmethod
     def get_user_member_of(cls, user, **kwargs):
+        """
+        Gets the list of the club in which the user is member of
+
+        :param user: the user
+        :param kwargs: usual kwargs
+        :return: list of clubs
+        """
         kwargs['projection'] = 'club'
         return cls.__get(user.member_of, **kwargs)
 
     @classmethod
     def get_user_owner_of(cls, user, **kwargs):
+        """
+        Gets the list of the club in which the user is owner of
+
+        :param user: the user
+        :param kwargs: usual kwargs
+        :return: list of clubs
+        """
         kwargs['projection'] = 'club'
         return cls.__get(user.owner_of, **kwargs)
 
     @classmethod
     def get_user_trainer_of(cls, user, **kwargs):
+        """
+        Gets the list of the club in which the user is trainer of
+
+        :param user: the user
+        :param kwargs: usual kwargs
+        :return: list of clubs
+        """
         kwargs['projection'] = 'club'
         return cls.__get(user.trainer_of, **kwargs)
 
     @classmethod
     def get_user_courses(cls, user, **kwargs):
+        """
+        Gets the list of the courses in which the user is subscribed
+
+        :param user: the user
+        :param kwargs: usual kwargs
+        :return: list of courses
+        """
         kwargs['projection'] = 'course'
-        return cls.__get(cls.model_course_user.query(cls.model_course_user.member == user), **kwargs)
+        return cls.__get(
+            cls.model_course_user.query(cls.model_course_user.is_active == True, cls.model_course_user.member == user),
+            **kwargs)
 
 
     # [END] User
@@ -98,17 +138,51 @@ class APIDB():
     # [START] CLUB and relationships
     @classmethod
     def create_club(cls, **args):
+        """
+        Creates the club
+
+        :param args: dict containing the data of the club
+        :return: the club object
+        """
         club = cls.model_club()
         # this has validation,probably to be moved here and remove from put of the model.
         cls.__create(club, **args)
         return club
 
     @classmethod
-    def get_clubs(cls, **kwargs):
-        return cls.__get(cls.model_club.query(), **kwargs)
+    def update_club(cls, club, not_allowed=None, **args):
+        """
+        Updates the club
+
+        :param club: the club to pudate
+        :param not_allowed: list of properties that cannot be updated
+        :param args: dict containing the values to update
+        :return: Tuple -> Bool, Object
+        """
+        return cls.__update(club, not_allowed=not_allowed, **args)
 
     @classmethod
-    # Probalby we want something more prcise?
+    def delete_club(cls, club):
+        """
+        Deletes the club
+
+        :param club: the club to pudate
+        :return: Tuple -> Bool, Object
+        """
+        club.safe_delete()
+        return True, club
+
+    @classmethod
+    def get_clubs(cls, **kwargs):
+        """
+        Gets the list of all clubs
+
+        :param kwargs: usual kwargs
+        :return: list of clubs
+        """
+        return cls.__get(cls.model_club.query(cls.model_club.is_open == True), **kwargs)
+
+    @classmethod
     def club_query(cls, query=None, **kwargs):
         if query:
             return cls.__get(cls.model_club.query(query), **kwargs)
@@ -117,11 +191,24 @@ class APIDB():
 
     @classmethod
     def get_club_by_id(cls, id_club):
+        """
+        Gets the club by id
+
+        :param id_club: id of the club
+        :return: the club
+        """
         return cls.model_club.get_by_id(id_club)
 
     @classmethod
     def get_user_club_role(cls, user, club):
-        return cls.model_club_user.get_by_id(user, club).membership_type
+        """
+        Gets the membership type of the user respect to the club
+
+        :param user: the user
+        :param club: the club
+        :return: the membership type
+        """
+        return cls.get_membership(user, club).membership_type
 
     @classmethod
     def get_club_all_members(cls, club, status="ACCEPTED", **kwargs):
@@ -150,7 +237,7 @@ class APIDB():
 
     @classmethod
     def get_club_courses(cls, club, active_only=True, course_type=None, **kwargs):
-        query = cls.model_course.query(cls.model_course.club == club.key)
+        query = cls.model_course.query(cls.model_course.club == club.key).filter(cls.model_course.is_deleted == False)
         if course_type:
             query = query.filter(cls.model_course.course_type == course_type)
         if active_only:
@@ -158,18 +245,17 @@ class APIDB():
         return cls.__get(query, **kwargs)
 
     @classmethod
-    def add_member_to_club(cls, user, club, status="PENDING"):
+    def add_member_to_club(cls, user, club, status="PENDING", end_date=None):
         cls.model_club_user(id=cls.model_club_user.build_id(user.key, club.key),
-                            member=user.key, club=club.key, is_active=True, status=status).put()
+                            member=user.key, club=club.key, is_active=True, status=status, end_date=end_date).put()
 
     @classmethod
     def rm_member_from_club(cls, user, club):
-        # remove makes it anactive. correct?
+        # remove makes it inactive. correct?
         relation = ndb.Key(cls.model_club_user, cls.model_club_user.build_id(user.key, club.key)).get()
         if relation:
             relation.is_active = False
             relation.put()
-
 
 
     # FIXME: what happens if the user is subscribed to courses? if we remove him, what if he re/subscribe?
@@ -177,14 +263,14 @@ class APIDB():
 
 
     @classmethod
-    def add_trainer_to_club(cls, user, club, status="PENDING"):
+    def add_trainer_to_club(cls, user, club, status="PENDING", end_date=None):
         cls.model_club_user(id=cls.model_club_user.build_id(user.key, club.key),
                             member=user.key, club=club.key, is_active=True, membership_type="TRAINER",
-                            status=status).put()
+                            status=status, end_date=end_date).put()
 
     @classmethod
     def rm_trainer_from_club(cls, user, club):
-        # remove makes it anactive. correct?
+        # remove makes it inactive. correct?
         # function is the same ;)
         cls.rm_member_from_club(user, club)
 
@@ -193,10 +279,10 @@ class APIDB():
 
 
     @classmethod
-    def add_owner_to_club(cls, user, club):
+    def add_owner_to_club(cls, user, club, end_date=None):
         cls.model_club_user(id=cls.model_club_user.build_id(user.key, club.key),
                             member=user.key, club=club.key, is_active=True, membership_type="OWNER",
-                            status="ACCEPTED").put()
+                            status="ACCEPTED", end_date=end_date).put()
 
 
     @classmethod
@@ -207,11 +293,16 @@ class APIDB():
     @classmethod
     def get_type_of_membership(cls, user, club):
         # this function uses both ids
-        membership = cls.model_club_user.get_by_id(user, club)
+        membership = cls.get_membership(user, club)
         if membership.is_active:
             return membership.membership_type
         else:
             return None
+
+    @classmethod
+    def get_membership(cls, user, club):
+        membership = cls.model_club_user.get_by_id(user, club)
+        return membership
 
 
     @classmethod
@@ -220,7 +311,8 @@ class APIDB():
 
     @classmethod
     def get_club_activities(cls, club, **kwargs):
-        return cls.__get(cls.model_exercise.query(cls.model_exercise.created_for==club.key), **kwargs)
+        return cls.__get(cls.model_exercise.query(cls.model_exercise.created_for == club.key), **kwargs)
+
     # [END] club
 
     # [START] Courses
@@ -229,6 +321,42 @@ class APIDB():
     def get_course_by_id(cls, id_course):
         return cls.model_course.get_by_id(id_course)
 
+    @classmethod
+    def create_course(cls, club, **args):
+        """
+        Creates the course
+
+        :param club: the club to which the course is created
+        :param args: dict containing the data of the course
+        :return: the club course
+        """
+        course = cls.model_course()
+        course.club = club.key
+        cls.__create(course, **args)
+        return course
+
+    @classmethod
+    def update_course(cls, course, **args):
+        """
+        Creates the course
+
+        :param course: the course to update
+        :param args: dict containing the data of the course
+        :return: the course
+        """
+        cls.__update(course, not_allowed=['club'], **args)
+        return course
+
+    @classmethod
+    def delete_course(cls, course):
+        """
+        Creates the course
+
+        :param course: the course to delete
+        :return: the course
+        """
+        course.safe_delete()
+        return course
 
     @classmethod
     def add_member_to_course(cls, user, course, status="PENDING", profile_level=1, exercises_i_cant_do=[]):
@@ -299,7 +427,7 @@ class APIDB():
 
     @classmethod
     def get_course_sessions(cls, course, date_from=None, date_to=None, session_type=None, status=None, **kwargs):
-        sessions = cls.model_session.query(cls.model_session.course == course.key)
+        sessions = cls.get_session().filter(cls.model_session.course == course.key)
         if date_from:
             sessions = sessions.filter(cls.model_session.start_date >= date_from)
         if date_to:
@@ -308,12 +436,13 @@ class APIDB():
             sessions = sessions.filter(cls.model_session.session_type == session_type)
         if status:
             sessions = sessions.filter(cls.model_session.status == status)
+
         return cls.__get(sessions, **kwargs)
 
     @classmethod
     def get_club_courses_im_trainer_of(cls, user, club, **kwargs):
         all_courses = cls.__get(cls.model_course_trainers.query(cls.model_course_trainers.member == user))
-        courses = [course for course in all_courses if course.club == club.key]
+        courses = [course for course in all_courses if course.club == club.key and not course.is_deleted]
         return cls.__get(courses, **kwargs)
 
     @classmethod
@@ -323,6 +452,48 @@ class APIDB():
     # [END] Courses
 
     # [START] Session
+
+    @classmethod
+    def create_session(cls, course, **args):
+        """
+        Creates the session
+
+        :param course: the course to which the session is created
+        :param args: dict containing the data of the session
+        :return: the session
+        """
+        session = cls.model_session()
+        session.course = course.key
+        cls.__create(session, **args)
+        return session
+
+    @classmethod
+    def update_session(cls, session, **args):
+        """
+        Updates the session
+
+        :param session: the session to update
+        :param args: dict containing the data of the session
+        :return: the session
+        """
+        cls.__update(session, not_allowed=['course'], **args)
+        return session
+
+    @classmethod
+    def delete_session(cls, session):
+        """
+        Deletes a session
+
+        :param session: the session to delete
+        :return: Tuple -> Bool, Object
+        """
+        session.safe_delete()
+        return True, session
+
+    @classmethod
+    def get_sessions(cls, **kwargs):
+        return cls.__get(cls.model_session.query(cls.model_session.canceled == False), **kwargs)
+
     @classmethod
     def add_activity_to_session(cls, session, exercise):
         if exercise.key not in session.list_exercises:
@@ -338,25 +509,25 @@ class APIDB():
 
     @classmethod
     def user_participated_in_session(cls, user, session):
-        return cls.model_participation.get_by_id(user, session) is not None
+        return cls.model_participation.get_by_data(user=user, session=session) is not None
 
 
     @classmethod
     def user_participation_details(cls, user, session, count_only=False):
         if count_only:
-            participation = cls.model_participation.get_by_id(user, session)
+            participation = cls.model_participation.get_by_data(user, session)
             if participation:
                 return participation.participation_count
             else:
                 return 0
-        return cls.model_participation.get_by_id(user, session)
+        return cls.model_participation.get_by_data(user, session)
 
 
     @classmethod
     def session_completeness(cls, user, session):
-        participation = cls.model_participation.get_by_id(user, session)
+        participation = cls.model_participation.get_by_data(user=user, session=session)
         if participation:
-            return participation.score
+            return participation.max_completeness
         else:
             return 0
 
@@ -397,13 +568,13 @@ class APIDB():
 
     @classmethod
     def get_session_im_subscribed(cls, user, club, date_from=None, date_to=None, session_type=None, **kwargs):
-        courses = cls.model_course.query(cls.model_course.club == club.key).fetch(keys_only=True)
+        courses = cls.get_club_courses(club, keys_only=True)
         subscription_keys = [ndb.Key(cls.model_course_user, cls.model_course_user.build_id(user, course))
                              for course in courses]
         real_list = [s.course for s in ndb.get_multi(subscription_keys) if s is not None]
         if not real_list:
             return cls.__get([], **kwargs)
-        sessions = cls.model_session.query()
+        sessions = cls.get_sessions(query_only=True)
         sessions = sessions.filter(cls.model_session.course.IN(real_list))
         if date_from:
             sessions = sessions.filter(cls.model_session.start_date >= date_from)
@@ -416,13 +587,13 @@ class APIDB():
     @classmethod
     def get_session_im_trainer_of(cls, user, club, date_from=None, date_to=None, session_type=None, **kwargs):
 
-        courses = cls.model_course.query(cls.model_course.club == club.key).fetch(keys_only=True)
+        courses = cls.get_club_courses(club, keys_only=True)
         subscription_keys = [ndb.Key(cls.model_course_trainers, cls.model_course_trainers.build_id(user, course))
                              for course in courses]
         real_list = [s.course for s in ndb.get_multi(subscription_keys) if s is not None]
         if not real_list:
             return cls.__get([], **kwargs)
-        sessions = cls.model_session.query()
+        sessions = cls.get_sessions(query_only=True)
         sessions = sessions.filter(cls.model_session.course.IN(real_list))
         if date_from:
             sessions = sessions.filter(cls.model_session.start_date >= date_from)
@@ -491,6 +662,61 @@ class APIDB():
 
     # [END] Exercise
 
+
+    # [START] Performances/Participation
+    @classmethod
+    def get_participation(cls, user, session, level=None):
+        return cls.model_participation.get_by_data(user, session, level)
+
+    @classmethod
+    def create_participation(cls, user, session, completeness, join_time, leave_time, indicators):
+        # TODO: TEST
+        #TODO switch to real pars
+
+        level = cls.get_user_subscription(user, session.course).profile_level
+        participation = cls.get_participation(user, session, level)
+        if not participation:
+            participation = cls.model_participation()
+            participation.session = session.key
+            participation.user = user.key
+            participation.level = level
+        # this is the rest that is updated
+        participation.completeness.append(completeness)
+        time_data = cls.model_time_data()
+        time_data.set_js('join', join_time)
+        time_data.set_js('leave', leave_time)
+        participation.time.append(time_data)
+        for indicator in indicators:
+            participation.add_indicator(indicator['id'], indicator['value'])
+        participation.put()
+        return participation
+
+    @classmethod
+    def get_performance(cls, participation, activity, level):
+        return cls.model_performance.query(cls.model_performance.participation == participation.key,
+                                           cls.model_performance.activity == activity.key,
+                                           cls.model_performance.level == level).get()
+
+    @classmethod
+    def create_performance(cls, participation, activity_id, completeness, record_date, indicators):
+        # TODO: TEST
+        #TODO switch to real pars
+
+        activity = cls.model_exercise.get_by_id(activity_id)
+        level = cls.get_user_level_for_activity(participation.user, activity, participation.session)
+        performance = cls.get_performance(participation, activity, level)
+        if not performance:
+            performance = cls.model_performance()
+            performance.participation = participation.key
+            performance.level = level
+            performance.activity = activity.key
+        performance.completeness.append(completeness)
+        performance.record_date.append(datetime.datetime.fromtimestamp(long(record_date) / 1000))
+        for indicator in indicators:
+            performance.add_indicator(indicator['id'], indicator['value'])
+        performance.put()
+
+    # [END] Performances
     @staticmethod
     def __create(model, **args):
         NOT_ALLOWED = ['id', 'key', 'namespace', 'parent']
@@ -502,6 +728,14 @@ class APIDB():
 
     @staticmethod
     def __update(model, not_allowed=None, **args):
+        """
+        Update fun
+
+        :param model:
+        :param not_allowed:
+        :param args:
+        :return:
+        """
         NOT_ALLOWED = ['id', 'key', 'namespace', 'parent']
         if not not_allowed:
             not_allowed = []
@@ -521,23 +755,28 @@ class APIDB():
         return True, model
 
     @classmethod
-    def __get(cls, o, size=-1, paginated=False, page=0, count_only=False,
+    def __get(cls, o, size=-1, paginated=False, page=0, count_only=False, keys_only=False, query_only=False,
               **kwargs):  # pragma: no cover
         """
         Implements the get of the query or of a list of objects.
 
         It accepts server parameters to cover various scopes::
 
+            # image ``o`` is a query on ``members``
             # get all members
             cls.__get(o)
-            # get 10 trainers
+            # get 10 members
             cls.__get(o, 10)
             # returns the number of members
             cls.__get(o, count_only=True)
-            # get paginated results,for paginated
+            # get paginated results
             cls.__get(o, paginated=True)
             # can also specify size (of the page) and page(starting point)
             cls.__get(o, paginated=True,size=5,page=1)
+            # can get just the keys if needed
+            cls.__get(o, paginated=True,size=5,page=1,key_only = True)
+            # or the query object
+            cls.__get(o, query_only = True)
 
 
         The function can be used to retrieve:
@@ -551,19 +790,26 @@ class APIDB():
         :param paginated: if the result has to be paginated
         :param size: the size of the page or of the number of elements to retreive
         :param page: the starting page number
-        :param count_only: if true, return the count
+        :param count_only: if true, returns the count
+        :param keys_only: if true, returns the keys only.
+        :param query_only: if true returns the query object.
         :param kwargs: remaining args that are generally used for the relationship, thus they can be 'projection' and 'merge'
 
         :return:
 
+            - the query (if ``query_only = True``)
             - a list of objects (if ``paginated = False``)
-            - a list of object, and the total number of elements (if ``paginated = True``)
+            - a list of objects and the total number of elements (if ``paginated = True``)
             - the total number of elements (if ``count_only = True``)
         """
 
         if type(o) == Query:
+            if query_only:
+                return o
             if count_only:
                 return o.count()
+            if keys_only:
+                return o.fetch(keys_only=True)
 
             # if result has to be paginated
             if not paginated:

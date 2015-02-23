@@ -14,16 +14,26 @@ handlers:
   upload: _build/html/(.*)
 
 - url: /api/admin/delete-tokens
-  script: api.app
+  script: api_admin.app
   login: admin
 
 - url: /api/admin/init-db
-  script: api.app
+  script: api_admin.app
   login: admin
 
-- url: /api/.*
-  script: api.app
+- url: /api/coach/.*
+  script: api_coach.app
+
+- url: /api/trainee/(.*)
+  script: api_trainee.app
+
+- url: /api/admin/.*
+  script: api_admin.app
 
 libraries:
 - name: webapp2
   version: "2.5.2"
+
+
+builtins:
+- deferred: on

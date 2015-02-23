@@ -1,17 +1,36 @@
 from datetime import datetime
+import json
+import logging
+import logging.config
 
 from google.appengine.api.datastore_errors import BadValueError
 from google.appengine.ext.ndb.key import Key
 
-from gymcentral.exceptions import AuthenticationError
+from gymcentral.exceptions import AuthenticationError, BadParameters
 from gymcentral.gc_models import GCUser, GCModel, GCModelMtoMNoRep
+from gymcentral.gc_utils import date_to_js_timestamp
+from tasks import sync_user
 
 
 __author__ = 'fab,stefano.tranquillini'
 
-from google.appengine.ext import ndb
+from google.appengine.ext import ndb, deferred
 
 # TODO create a GCMOdel for the support table that automatically has the get/build id
+
+logging.config.fileConfig('logging.conf')
+logger = logging.getLogger('myLogger')
+
+
+class Version(ndb.Model):
+    type = ndb.StringProperty(choices=['production', 'demo', 'test'])
+    current = ndb.StringProperty(required=True)
+
+
+class Log(ndb.Model):
+    data = ndb.JsonProperty()
+    recorded = ndb.DateTimeProperty(auto_now=True)
+
 
 class User(GCUser):
     # this to save writing ops. only email can be used.
@@ -50,17 +69,34 @@ class User(GCUser):
             return membership.mebership_type
         raise AuthenticationError("User is not connected to the Club")
 
+    def _post_put_hook(self, future):
+        # this is needed for the realtime API
+        # sync_user(self)
+        deferred.defer(sync_user, self)
+
+    def to_dict(self):
+        d = super(User,self).to_dict()
+        del d['updated']
+        del d['created']
+        del d['auth_ids']
+        return d
 
 class Course(GCModel):
-    # TODO write test case for this. should be already covered by methods below
-    # FIXME: type and duration, how to put them
     name = ndb.StringProperty(required=True)
     description = ndb.StringProperty(required=True)
     course_type = ndb.StringProperty(choices=['SCHEDULED', 'PROGRAM', 'FREE'], required=True, default="SCHEDULED")
-    start_date = ndb.DateTimeProperty(auto_now_add=True, required=True)
-    end_date = ndb.DateTimeProperty(auto_now_add=True, required=True)
+    start_date = ndb.DateTimeProperty()
+    end_date = ndb.DateTimeProperty()
+    duration = ndb.IntegerProperty()
     club = ndb.KeyProperty('Club', required=True)
+    is_deleted = ndb.BooleanProperty(default=False)
+
     # levels or profile to be added
+
+    def safe_delete(self):
+        # NOTE: this requires to use .is_deleted == False in the queries. (update the index)
+        self.is_deleted = True
+        self.put()
 
     @property
     def subscribers(self):
@@ -72,6 +108,28 @@ class Course(GCModel):
     def trainers(self):
         return CourseTrainers.query(ndb.AND(CourseTrainers.course == self.key,
                                             CourseTrainers.is_active == True))
+
+    def to_dict(self):
+        # for the output
+        result = super(Course, self).to_dict()
+        if self.course_type != "SCHEDULED":
+            del result['end_date']
+            del result['start_date']
+        if self.course_type != "PROGRAM":
+            del result['duration']
+        return result
+
+    def is_valid(self):
+        # check for the update/creation.
+        if self.course_type == "SCHEDULED":
+            if not self.start_date:
+                return False, "Entity has uninitialized properties: start_date"
+            if not self.end_date:
+                return False, "Entity has uninitialized properties: end_date"
+        if self.course_type == "PROGRAM":
+            if not self.duration:
+                return False, "Entity has uninitialized properties: duration"
+        return True
 
 
 class CourseTrainers(GCModelMtoMNoRep):
@@ -117,8 +175,12 @@ class ClubMembership(GCModelMtoMNoRep):
     status = ndb.StringProperty(choices=["ACCEPTED", "DECLINED", "PENDING"], default="PENDING",
                                 required=True)
     creation_date = ndb.DateTimeProperty(auto_now=True)
+    end_date = ndb.DateTimeProperty()
 
-    # not sure that all these info goes here
+    """
+    TODO: do we need an end date here? how does this affect the queries?
+    it can be used with a cron job that sets active=false if today>end_date
+    """
 
     @property
     def get_member(self):
@@ -198,6 +260,7 @@ class Session(GCModel):
     day_no = ndb.IntegerProperty()
     canceled = ndb.BooleanProperty(default=False, required=True)
     course = ndb.KeyProperty(kind="Course", required=True)
+    # TODO: maybe needs order. it's a list, they can just send a new list
     list_exercises = ndb.KeyProperty(kind="Exercise", repeated=True)
     profile = ndb.JsonProperty()
     meta_data = ndb.JsonProperty()
@@ -214,7 +277,33 @@ class Session(GCModel):
     #
     # @property
     # def get_exercises(self):
-    #     return ndb.get_multi(self.list_exercises)
+    # return ndb.get_multi(self.list_exercises)
+    def _pre_put_hook(self):
+        if isinstance(self.profile, str):
+            try:
+                self.profile = json.loads(self.profile)
+            except Exception as ex:
+                logger.error(ex)
+                raise BadValueError("Profile must be a valid json")
+
+    def is_valid(self):
+        # check for the update/creation.
+        course_type = self.course.get().course_type
+        if course_type == "SCHEDULED":
+            if not self.start_date:
+                return False, "Entity has uninitialized properties: start_date"
+            if not self.end_date:
+                return False, "Entity has uninitialized properties: end_date"
+            if not self.url:
+                return False, "Entity has uninitialized properties: url"
+        if course_type == "PROGRAM":
+            if not self.week_no:
+                return False, "Entity has uninitialized properties: week_no"
+            if not self.day_no:
+                return False, "Entity has uninitialized properties: day_no"
+            if not self.url:
+                return False, "Entity has uninitialized properties: url"
+        return True
 
     def to_dict(self):
         result = super(Session, self).to_dict()
@@ -241,19 +330,6 @@ class Session(GCModel):
                 return "FINISHED"
         return "ONGOING"
 
-    def _pre_put_hook(self):
-        course = self.course.get()
-        if course.course_type == "SCHEDULED":
-            if not self.start_date:
-                raise BadValueError("Entity has uninitialized properties: start_date")
-            if not self.end_date:
-                raise BadValueError("Entity has uninitialized properties: end_date")
-        if course.course_type == "PROGRAM":
-            if not self.week_no:
-                raise BadValueError("Entity has uninitialized properties: week_no")
-            if not self.day_no:
-                raise BadValueError("Entity has uninitialized properties: day_no")
-
     def _post_put_hook(self, future):
         # check if startdate or and enddate are outside course time, then update course.
         course = self.course.get()
@@ -264,12 +340,9 @@ class Session(GCModel):
                 course.end_date = self.end_date
         course.put()
 
-    # @property
-    # def participation_count(self):
-    # return ExercisePerformance.query(ExercisePerformance.session == self.key,
-    #                                      projection=[ExercisePerformance.user],
-    #                                      group_by=[ExercisePerformance.user]).count()
-
+    def safe_delete(self):
+        self.canceled = True
+        self.put()
 
     @property
     def activity_count(self):
@@ -314,7 +387,7 @@ class Level(GCModel):
     def details(self):
         ret = []
         for detail in self.details_list:
-            indicator = Key(urlsafe=detail['indicator']).get()
+            indicator = Key(urlsafe=detail['detail']).get()
             # we make a copy, it's direct access to it..
             d_indicator = indicator.to_dict()
             d_indicator['value'] = detail['value']
@@ -322,7 +395,10 @@ class Level(GCModel):
         return ret
 
     def add_detail(self, detail, value):
-        self.details_list.append(dict(indicator=detail.key.urlsafe(), value=value))
+        for i_detail in self.details_list:
+            if i_detail['detail'] == detail.id:
+                raise BadParameters("%s is already present in the object" % detail.name)
+        self.details_list.append(dict(detail=detail.key.urlsafe(), value=value))
         self.put()
 
     def to_dict(self):
@@ -333,28 +409,100 @@ class Level(GCModel):
 
 
 class TimeData(GCModel):
-    start = ndb.DateTimeProperty()
-    end = ndb.DateTimeProperty()
+    join = ndb.DateTimeProperty()
+    leave = ndb.DateTimeProperty()
+
+    def set_js(self, prop, value):
+        setattr(self, prop, datetime.datetime.fromtimestamp(long(value) / 1000))
+
+    def to_dict(self):
+        return dict(join=date_to_js_timestamp(self.join), leave=date_to_js_timestamp(self.leave))
 
 
-class Participation(GCModelMtoMNoRep):
+class Participation(GCModel):
     session = ndb.KeyProperty(kind="Session", required=True)
     user = ndb.KeyProperty(kind="User", required=True)
     level = ndb.IntegerProperty()
-    increase_level = ndb.BooleanProperty(default=False)
-    score = ndb.FloatProperty()
-    when = ndb.StructuredProperty(TimeData, repeated=True)
+    time = ndb.StructuredProperty(TimeData, repeated=True)
+    completeness = ndb.IntegerProperty(repeated=True)
+    # when = ndb.DateTimeProperty(repeated=True)
+    indicator_list = ndb.PickleProperty(default=[])
+
+    @classmethod
+    def get_by_data(cls, user, session, level=None):
+        query = cls.query(
+            ndb.AND(cls.session == session.key,
+                    cls.user == user.key))
+        if level:
+            query = query.filter(cls.level == level)
+        res = query.get()
+        # if there's more then return the last one.
+        if isinstance(res, list):
+            if res:
+                return res[-1]
+        return res
 
     @property
     def participation_count(self):
         return len(self.when)
 
+    @property
+    def indicators(self):
+        ret = []
+        for ind in self.indicator_list:
+            indicator = Key(urlsafe=ind['indicator']).get()
+            # we make a copy, it's direct access to it..
+            d_indicator = indicator.to_dict()
+            d_indicator['value'] = indicator['value']
+            ret.append(d_indicator)
+        return ret
 
-class Performance(GCModel):
-    session = ndb.KeyProperty(kind="Session", required=True)
-    user = ndb.KeyProperty(kind="User", required=True)
-    level = ndb.KeyProperty(kind="Level", required=True)
-    when = ndb.DateTimeProperty(auto_now_add=True)
+    def add_indicator(self, indicator, value):
+        for i_detail in self.indicator_list:
+            if i_detail['indicator'] == indicator.id:
+                raise BadParameters("%s is already present in the object" % indicator.name)
+        self.indicator_list.append(dict(indicator=indicator.id, value=value))
+        self.put()
+
+    @property
+    def max_completeness(self):
+        return max(self.completeness)
+
+
+class Performance(GCModelMtoMNoRep):
+    activity = ndb.KeyProperty(kind="Exercise", required=True)
+    participation = ndb.KeyProperty(kind="Participation", required=True)
+    level = ndb.IntegerProperty()
+    record_date = ndb.DateTimeProperty(repeated=True)
+    completeness = ndb.IntegerProperty(repeated=True)
+    indicator_list = ndb.PickleProperty(default=[])
+
+    @property
+    def indicators(self):
+        ret = []
+        for ind in self.indicator_list:
+            indicator = Key(urlsafe=ind['indicator']).get()
+            # we make a copy, it's direct access to it..
+            d_indicator = indicator.to_dict()
+            d_indicator['value'] = indicator['value']
+            ret.append(d_indicator)
+        return ret
+
+    def add_indicator(self, indicator, value):
+        for i_detail in self.indicator_list:
+            if i_detail['indicator'] == indicator.id:
+                raise BadParameters("%s is already present in the object" % indicator.name)
+        self.indicator_list.append(dict(indicator=indicator.id, value=value))
+        self.put()
+
+    @property
+    def max_completeness(self):
+        return max(self.completeness)
+
+    def to_dict(self):
+        d = super(Performance, self).to_dict()
+        d['record_date'] = [date_to_js_timestamp(data) for data in self.record_date]
+        return d
 
 
 class PossibleAnswer(GCModel):

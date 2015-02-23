@@ -5,7 +5,7 @@ import webtest
 from api_db_utils import APIDB
 from gymcentral.auth import GCAuth
 from gymcentral.gc_utils import date_to_js_timestamp
-from api import app
+from api_admin import app
 from models import Course, Level, Exercise, Session, CourseSubscription, Performance, Indicator, PossibleAnswer, \
     TimeData, Participation
 

@@ -5,7 +5,7 @@ import webtest
 from api_db_utils import APIDB
 from gymcentral.auth import GCAuth
 from gymcentral.gc_utils import date_to_js_timestamp
-from api import app
+from api_admin import app
 
 
 __author__ = 'stefano'
@@ -14,11 +14,15 @@ import logging
 import logging.config
 import unittest
 from google.appengine.ext import testbed
-
+# those are needed to load the wrappers
+from api_trainee import app as app_trainee
+from api_coach import app as app_coach
 
 
 class APIestCase(unittest.TestCase):
     def setUp(self):
+        api_c = app_coach
+        api_t = app_trainee
         logging.config.fileConfig('logging.conf')
         self.logger = logging.getLogger('myLogger')
         # First, create an instance of the Testbed class.

@@ -1,4 +1,4 @@
 cron:
 - description: delete old tokens
-  url: /api-admin/token-delete
+  url: /api/admin/delete-tokens
   schedule: every day 00:17
