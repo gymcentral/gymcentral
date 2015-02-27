@@ -7,6 +7,7 @@ This is the explanation of the api.
 .. note::
 
     The URL of the app are:
+        - ``ADMIN_URL = /api/admin``
         - ``COACH_URL = /api/coach``
         - ``TRAINEE_URL = /api/trainee``
 
@@ -21,6 +22,17 @@ This is the explanation of the api.
         - do **NOT** send reserved fields: 'id', 'key', 'namespace', 'parent'
         - do **NOT** use the call to create a new object (this is against REST, I know)
 
-.. automodule:: api
+API Admin
+---------
+.. automodule:: api_admin
     :members:
-    :exclude-members: GCApp
+
+API Coach
+---------
+.. automodule:: api_coach
+    :members:
+
+API Trainee
+-----------
+.. automodule:: api_trainee
+    :members:

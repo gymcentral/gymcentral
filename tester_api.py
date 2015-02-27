@@ -6,6 +6,9 @@ from api_db_utils import APIDB
 from gymcentral.auth import GCAuth
 from gymcentral.gc_utils import date_to_js_timestamp
 from api_admin import app
+from api_coach import app
+from api_trainee import app
+from app import app
 from models import Course, Level, Exercise, Session, CourseSubscription, Performance, Indicator, PossibleAnswer, \
     TimeData, Participation
 
@@ -29,6 +32,8 @@ class APIestCase(unittest.TestCase):
         # Next, declare which service stubs you want to use.
         self.testbed.init_datastore_v3_stub()
         self.testbed.init_memcache_stub()
+        self.testbed.init_urlfetch_stub()
+        self.testbed.init_taskqueue_stub()
         # check http://webtest.pythonpaste.org/en/latest/index.html for this
         self.app = webtest.TestApp(app)
 

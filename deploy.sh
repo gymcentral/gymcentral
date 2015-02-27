@@ -1,10 +1,15 @@
 #!/bin/bash
 #if it false swith to true to perform tests
-sed -i.backup -e 's/DEBUG = False/DEBUG = True/g' cfg.py
-echo "Running test cases, see 'result.test' file for the results"
-./run_nosetest.sh > result.test 2>&1
-#swtch to false for the production
-sed -i.backup -e 's/DEBUG = True/DEBUG = False/g' cfg.py
+sed -i.backup -e's/DEBUG = False/DEBUG = True/g' cfg.py
+if [ "$1" != "FORCE" ]; then
+    echo "Running test cases, see 'result.test' file for the results"
+    ./run_nosetest.sh > result.test 2>&1
+    #swtch to false for the production
+    sed -i.backup -e 's/DEBUG = True/DEBUG = False/g' cfg.py
+else
+    echo "Skipping test"
+    echo "OK" > result.test
+fi
 if grep -q "OK" result.test; then
     echo "Tests: OK"
     echo ""

@@ -5,12 +5,12 @@ from models import Club, ClubMembership, CourseSubscription, CourseTrainers, Cou
 
 # this beacuse the decorator is needed to create the docs but not to run the project
 # http://stackoverflow.com/questions/3687046/python-sphinx-autodoc-and-decorated-members
-# try:
-#     from decorator import decorator
-# except ImportError:
-#     # No decorator package available. Create a no-op "decorator".
-#     def decorator(f):
-#         return f
+try:
+    from decorator import decorator
+except ImportError:
+    # No decorator package available. Create a no-op "decorator".
+    def decorator(f):
+        return f
 
 __author__ = 'stefano'
 
@@ -60,6 +60,7 @@ def __club_membership_role(user, club, roles):
 
 def user_has_role(roles):
     # this works only for gymcentral
+    @decorator
     def has_role_real(handler):
         """
         Checks if the user has the correct roles.

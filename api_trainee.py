@@ -1,5 +1,7 @@
 import json
 import logging
+from google.appengine.ext.deferred import deferred
+from tasks import sync_user
 
 
 __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
@@ -87,17 +89,24 @@ def trainee_profile(req):
     out = ['id', 'name', 'nickname', 'gender', 'picture', 'avatar', 'birthday', 'country', 'city', 'language',
            'email', 'phone', 'active_club']
     if req.method == "GET":
-        # TODO: test
         return sanitize_json(req.user, out)
     elif req.method == "PUT":
-        j_req = json_from_request(req)
+        j_req = json_from_request(req, accept_all=True)
+        logger.debug("jreq %s",j_req)
         update, user = APIDB.update_user(req.user, **j_req)
+        s_token = GCAuth.auth_user_token(user)
+        deferred.defer(sync_user, user, s_token)
         return sanitize_json(user, out)
 
 
 @app.route('/%s/users/current/clubs' % APP_TRAINEE, methods=('GET',))
 @user_required
 def trainee_club_list_user(req):
+    """
+    ``GET`` @ |ta| +  ``/users/current/clubs``
+
+    List of the clubs of the current user
+    """
     req.member = True
     return trainee_club_list(req)
 
@@ -340,7 +349,7 @@ def trainee_club_session_list(req, uskey_club):
     except Exception as e:
         raise BadParameters("Problems with the data format %s" % e.message)
     session_type = j_req['type']
-    sessions, total = APIDB.get_session_im_subscribed(req.user, club, date_from, date_to, session_type, paginated=True,
+    sessions, total = APIDB.get_sessions_im_subscribed(req.user, club, date_from, date_to, session_type, paginated=True,
                                                       page=page, size=size)
 
     res_list = []
@@ -413,6 +422,11 @@ def trainee_session_detail(req, uskey_session):
 @app.route('/%s/sessions/<uskey_session>/performances', methods=("POST",))
 @user_has_role(['MEMBER'])
 def trainee_session_performance(req, uskey_session):
+    """
+    ``POST`` @ |ta| +  ``/sessions/<uskey_session>/performances``
+
+    Post the performance of the session
+    """
     participation = json_from_request(req, mandatory_props=['joinTime', 'leaveTime', 'completeness', 'indicators',
                                                             'activityPerformances'])
     performances = participation.pop('activity_performances')
@@ -428,6 +442,11 @@ def trainee_session_performance(req, uskey_session):
 @app.route('/%s/courses/<uskey_course>/performances', methods=("GET",))
 @user_has_role(['MEMBER'])
 def trainee_course_performances(req, uskey_course):
+    """
+    ``GET`` @ |ta| +  ``/course/<uskey_course>/performances``
+
+    Gets the score of the course. The completenss of the course
+    """
     course = req.model
     sessions = APIDB.get_course_sessions(course)
     tot = len(sessions)

@@ -2,11 +2,11 @@ from datetime import datetime
 import json
 import logging
 import logging.config
+
 import webtest
 
 from api_db_utils import APIDB
 from api_trainee import app
-
 from gymcentral.auth import GCAuth
 
 
@@ -18,6 +18,20 @@ from google.appengine.ext import testbed
 
 logging.config.fileConfig('logging.conf')
 logger = logging.getLogger('myLogger')
+
+import time
+
+
+class Timer(object):
+    def __enter__(self):
+        self.__start = time.time()
+
+    def __exit__(self, type, value, traceback):
+        # Error handling here
+        self.__finish = time.time()
+
+    def duration_in_seconds(self):
+        return self.__finish - self.__start
 
 
 class NDBTestCase(unittest.TestCase):
@@ -40,8 +54,8 @@ class NDBTestCase(unittest.TestCase):
                                       picture='..', email='user@test.com', phone='2313213', active_club=None,
                                       unique_properties=['email'])
         # self.trainer = APIDB.create_user("own:" + "trainer", nickname="trainer", name="trainer", gender="m",
-        #                                  avatar="..",
-        #                                  birthday=datetime.now(), country='Italy', city='TN', language='en',
+        # avatar="..",
+        # birthday=datetime.now(), country='Italy', city='TN', language='en',
         #                                  picture='..', email='trainer@test.com', phone='2313213', active_club=None,
         #                                  unique_properties=['email'])
         # self.owner = APIDB.create_user("own:" + "owner", nickname="owner", name="owner", gender="m", avatar="..",
@@ -58,19 +72,57 @@ class NDBTestCase(unittest.TestCase):
 
 
     def test_snippet(self):
+        # timer = Timer()
+        # for i in range(1000):
+        #
+        # # with timer:
+        # #     APIDB.get_clubs(paginated=True, size=10)
+        # # print timer.duration_in_seconds()
+        # # with timer:
+        # #     APIDB.get_clubs(paginated=True, size=10)
+        # # print timer.duration_in_seconds()
+        # # print "---"
+        # # res=[]
+        # # for i in range(100):
+        # #     with timer:
+        # #         APIDB.get_clubs(paginated=True, size=100, page=(i/10))
+        # #     res.append(timer.duration_in_seconds())
+        # # print sum(res)/len(res)
+        # res=[]
+        # for i in range(100):
+        # with timer:
+        #         APIDB.get_clubs(paginated=True, size=(i))
+        #     res.append(timer.duration_in_seconds())
+        # print "%s %s" %(sum(res),sum(res)/len(res))
         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
                                  training_type=["balance", "stability"], tags=["test", "trento"])
+        APIDB.add_member_to_club(self.user, club)
+        print APIDB.get_user_member_of(self.user)
+        print APIDB.get_membership(self.user, club)
+        print "-"
+        APIDB.rm_member_from_club(self.user, club)
+        print APIDB.get_user_member_of(self.user)
+        print APIDB.get_membership(self.user, club)
+        print "-"
+
+        APIDB.add_member_to_club(self.user,club)
+        print APIDB.get_user_member_of(self.user)
+        print APIDB.get_membership(self.user, club)
+        print "-"
+
+
+
 
         # resp = self.app.get('/api/admin/hw', headers=self.auth_headers)
         # print resp
-        self.user.active_club = club.id
-        self.user.put()
-        # resp = self.app.get('/api/trainee/users/current', headers=self.auth_headers)
+        # self.user.active_club = club.id
+        # self.user.put()
+        # # resp = self.app.get('/api/trainee/users/current', headers=self.auth_headers)
+        # # print resp
+        # resp = self.app.get('/api/trainee/clubs/current/members', headers=self.auth_headers)
         # print resp
-        resp = self.app.get('/api/trainee/clubs/current/members', headers=self.auth_headers)
-        print resp
-        resp = self.app.get('/api/trainee/clubs/%s/members'%club.id)
-        print resp
+        # resp = self.app.get('/api/trainee/clubs/%s/members'%club.id)
+        # print resp
         # resp = self.app_admin.get('/api/trainee/hw')
         # print resp
         # resp = self.app_admin.get('/api/coach/hw')
@@ -163,7 +215,7 @@ class NDBTestCase(unittest.TestCase):
         # print performance2.key.id()
 
         # user = APIDB.create_user("own:" + "member", nickname="member", name=[], gender="m", avatar="",
-        #                               birthday=datetime.now(), country='Italy', city='TN', language='en',
+        # birthday=datetime.now(), country='Italy', city='TN', language='en',
         #                               picture='..', email='user@test.com', phone='2313213', active_club=None,
         #                               unique_properties=['email'])
         #

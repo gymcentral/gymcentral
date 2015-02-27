@@ -6,10 +6,7 @@ import logging.config
 from google.appengine.api.datastore_errors import BadValueError
 from google.appengine.ext.ndb.key import Key
 
-from gymcentral.exceptions import AuthenticationError, BadParameters
-from gymcentral.gc_models import GCUser, GCModel, GCModelMtoMNoRep
-from gymcentral.gc_utils import date_to_js_timestamp
-from tasks import sync_user
+
 
 
 __author__ = 'fab,stefano.tranquillini'
@@ -69,16 +66,16 @@ class User(GCUser):
             return membership.mebership_type
         raise AuthenticationError("User is not connected to the Club")
 
-    def _post_put_hook(self, future):
-        # this is needed for the realtime API
-        # sync_user(self)
-        deferred.defer(sync_user, self)
+    # def _post_put_hook(self, future):
+    #     # this is needed for the realtime API
+    #     # deferred.defer(sync_user, self)
 
     def to_dict(self):
         d = super(User,self).to_dict()
         del d['updated']
         del d['created']
         del d['auth_ids']
+        del d['password']
         return d
 
 class Course(GCModel):
@@ -157,7 +154,7 @@ class CourseSubscription(GCModelMtoMNoRep):
                                 required=True)
     profile_level = ndb.IntegerProperty(default=1, required=True)
     # list of exercise i can't do.
-    exercises_i_cant_do = ndb.KeyProperty(kind='Exercise', repeated=True)
+    disabled_exercises = ndb.KeyProperty(kind='Exercise', repeated=True)
     increase_level = ndb.BooleanProperty(default=False, required=True)
     feedback = ndb.StringProperty(choices=["ACCEPTED", "DECLINED", "PENDING"], default="PENDING",
                                   required=True)
@@ -266,6 +263,7 @@ class Session(GCModel):
     meta_data = ndb.JsonProperty()
     on_before = ndb.KeyProperty(kind='Indicator', repeated=True)
     on_after = ndb.KeyProperty(kind='Indicator', repeated=True)
+    status = ndb.ComputedProperty(lambda self: self._compute_status())
 
     # @property
     # def get_on_before(self):
@@ -316,9 +314,7 @@ class Session(GCModel):
             del result['day_no']
         return result
 
-
-    @property
-    def status(self):
+    def _compute_status(self):
         if self.canceled:
             return "CANCELED"
         course = self.course.get().course_type

@@ -1,5 +1,5 @@
 APP documentation
 =================
 
-.. autoclass:: api.GCApp
+.. autoclass:: app.GCApp
     :members:

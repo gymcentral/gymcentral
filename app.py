@@ -1,3 +1,7 @@
+"""
+App
+
+"""
 from google.appengine.ext.ndb.key import Key
 from api_db_utils import APIDB
 import cfg
@@ -26,6 +30,10 @@ class GCApp(WSGIApp):
 
         If the ``key`` does not exists it raises and exception.
 
+        :param router: the router
+        :param request: the request
+        :param response: the response
+        :return: the request edited
         """
         kwargs = router.match(request)[2]
         if kwargs:
@@ -53,6 +61,12 @@ class GCApp(WSGIApp):
 
     @staticmethod
     def edit_response(rv):
+        """
+        Edits the response
+
+        :param rv: the response
+        :return: the edited response
+        """
         rv = camel_case(rv)
         return rv
 

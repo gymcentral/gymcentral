@@ -32,6 +32,8 @@ class APIestCase(unittest.TestCase):
         # Next, declare which service stubs you want to use.
         self.testbed.init_datastore_v3_stub()
         self.testbed.init_memcache_stub()
+        self.testbed.init_urlfetch_stub()
+        self.testbed.init_taskqueue_stub()
         # check http://webtest.pythonpaste.org/en/latest/index.html for this
         self.app = webtest.TestApp(app)
 

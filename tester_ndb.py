@@ -24,6 +24,8 @@ class NDBTestCase(unittest.TestCase):
         # Next, declare which service stubs you want to use.
         self.testbed.init_datastore_v3_stub()
         self.testbed.init_memcache_stub()
+        self.testbed.init_urlfetch_stub()
+        self.testbed.init_taskqueue_stub()
         # check http://webtest.pythonpaste.org/en/latest/index.html for this
 
 
@@ -182,7 +184,7 @@ class NDBTestCase(unittest.TestCase):
 
         course = Course(name="test course", description="test course", club=club.key)
         course.put()
-        self.assertEqual(0, APIDB.get_session_im_subscribed(member, club, date_from=datetime.now(),
+        self.assertEqual(0, APIDB.get_sessions_im_subscribed(member, club, date_from=datetime.now(),
                                                             count_only=True), "session i'm subscribed to")
         cs = CourseSubscription(id=CourseSubscription.build_id(member.key, course.key), member=member.key,
                                 course=course.key)
@@ -219,17 +221,17 @@ class NDBTestCase(unittest.TestCase):
                              score=50.2, when=[TimeData(start=datetime.now(), end=datetime.now())])
         part.put()
         self.assertEqual(1, APIDB.user_participation_details(member, session, count_only=True))
-        self.assertEqual(1, APIDB.get_session_im_subscribed(member, club, count_only=True), "session i'm subscribed to")
-        self.assertEqual(0, APIDB.get_session_im_subscribed(member, club, date_from=datetime.now(),
+        self.assertEqual(1, APIDB.get_sessions_im_subscribed(member, club, count_only=True), "session i'm subscribed to")
+        self.assertEqual(0, APIDB.get_sessions_im_subscribed(member, club, date_from=datetime.now(),
                                                             count_only=True), "session i'm subscribed to")
-        self.assertEqual(1, APIDB.get_session_im_subscribed(member, club, date_to=datetime.now(), count_only=True),
+        self.assertEqual(1, APIDB.get_sessions_im_subscribed(member, club, date_to=datetime.now(), count_only=True),
                          "session i'm subscribed to")
-        self.assertEqual(0, APIDB.get_session_im_subscribed(member, club, session_type="LIVE", count_only=True),
+        self.assertEqual(0, APIDB.get_sessions_im_subscribed(member, club, session_type="LIVE", count_only=True),
                          "session i'm subscribed to")
 
         self.assertEqual(2, APIDB.get_session_user_activities(session, member, count_only=True),
                          "Not the two exercises")
-        cs.exercises_i_cant_do = [ex.key]
+        cs.disabled_exercises = [ex.key]
         cs.put()
         self.assertEqual(1, APIDB.get_session_user_activities(session, member, count_only=True),
                          "Stop exercise not working")

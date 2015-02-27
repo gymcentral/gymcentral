@@ -1,33 +1,29 @@
+from google.appengine.ext.ndb.key import Key
+
+from models import Observation
+
+
 __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 
 import logging
+import datetime
+import logging.config
 
 from app import app
-from api_trainee import trainee_course_list, trainee_club_details
-import datetime
+from api_trainee import trainee_course_list, trainee_club_details, trainee_club_members
 from api_db_utils import APIDB
 from auth import user_has_role
 from gymcentral.auth import user_required
-from gymcentral.exceptions import BadParameters
+from gymcentral.exceptions import BadParameters, AuthenticationError
 from gymcentral.gc_utils import sanitize_json, sanitize_list, json_from_paginated_request, \
     json_from_request, date_to_js_timestamp
 from gymcentral.http_codes import HttpEmpty, HttpCreated
-import logging.config
+
 
 APP_COACH = "api/coach"
 
 logging.config.fileConfig('logging.conf')
 logger = logging.getLogger('myLogger')
-
-@app.route("/%s/hw" % APP_COACH, methods=('GET', ))
-def hw(req):  # pragma: no cover
-    # '''
-    # ``GET`` @ ``/api/admin`` ``/hw``
-    #
-    # Test function that replies "hello world"
-    # '''
-    logger.debug("hello world %s " % APP_COACH)
-    return "hello world! %s " % APP_COACH
 
 
 @app.route('/%s/users/current' % APP_COACH, methods=('GET',))
@@ -52,7 +48,7 @@ def coach_club_create(req):
     """
     ``POST`` @ |ca| + ``/clubs``
 
-    Crete a club.
+    Create a club.
     """
     j_req = json_from_request(req, ["name", "description", "url", "isOpen"])
     club = APIDB.create_club(j_req)
@@ -112,7 +108,7 @@ def coach_club_membership(req, uskey_club):
 
     List of the members of a club. |uroleOT|
     """
-    return trainee_club_membership(req, uskey_club)
+    return trainee_club_members(req, uskey_club)
 
 
 @app.route('/%s/clubs/<uskey_club>/memberships' % APP_COACH, methods=('POST',))
@@ -371,7 +367,7 @@ def coach_club_session_list(req, uskey_club):
         sessions, total = APIDB.get_club_sessions(club, date_from=date_from, date_to=date_to,
                                                   session_type=session_type, paginated=True, page=page, size=size)
     else:
-        sessions, total = APIDB.get_session_im_trainer_of(club, date_from=date_from, date_to=date_to,
+        sessions, total = APIDB.get_session_im_trainer_of(req.user, club, date_from=date_from, date_to=date_to,
                                                           session_type=session_type, paginated=True, page=page,
                                                           size=size)
     res_list = []
@@ -424,15 +420,59 @@ def coach_course_subscription_create(req, uskey_course):
     Creates a subscription for the coruse. |uroleOT|
     """
     course = req.model
-    j_req = json_from_request(req, mandatory_props=['userId', 'type'], optional_props=['profileLevel'])
+    j_req = json_from_request(req, mandatory_props=['userId', 'type'],
+                              optional_props=['profileLevel'])
+    user = APIDB.get_user_by_id(j_req['user_id'])
     if j_req['type'] == "MEMBER":
         if 'profile_level' not in j_req:
             raise BadParameters("profileLevel is missing")
-        user = APIDB.get_user_by_id(j_req['user_id'])
         APIDB.add_member_to_course(user, course, status="APPROVED", profile_level=j_req['profile_level'])
-    elif j_req['type'] == "TRAINER":
-        user = APIDB.get_user_by_id(j_req['user_id'])
+    elif j_req['type'] == "TRAINER":  # only owners can add coaches
+        if not APIDB.get_user_club_role(req.user, course.club) == "OWNER":
+            raise AuthenticationError("User is not a OWNER")
         APIDB.add_trainer_to_course(user, course)
+    return HttpEmpty()
+
+
+@app.route('/%s/subscriptions/<uskey_subscription>' % APP_COACH, methods=('PUT',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_course_subscription_create(req, uskey_course):
+    """
+    ``PUT`` @ |ca| +  ``/subscriptions/<uskey_subscription>``
+
+    Updates a subscription. |uroleO|
+    """
+    subscription = req.model
+    j_req = json_from_request(req,
+                              optional_props=['profileLevel', ('feedback', "APPROVED"), 'increaseLevel',
+                                              ('disabledExercise', []), ('observations', [])])
+    disabled_exercises = [Key(urlsafe=e) for e in j_req['disabled_exercises']]
+    observations = [Observation(text=e['text'], created_by=req.user) for e in j_req['observations']]
+    # delete if empty, otherwise are removed.
+    if disabled_exercises:
+        j_req['disabled_exercises'] = disabled_exercises
+    else:
+        del j_req['disabled_exercises']
+    if observations:
+        j_req['observations'] = observations
+    else:
+        del j_req['observations']
+    APIDB.update_subscription(subscription, ['role'], j_req)
+    return HttpEmpty()
+
+
+@app.route('/%s/subscriptions/<uskey_subscription>' % APP_COACH, methods=('DELETE',))
+@user_required
+def coach_course_subscription_create(req, uskey_course):
+    """
+    ``DELETE`` @ |ca| +  ``/subscriptions/<uskey_subscription>``
+
+    Deletes a subscription. |uroleO|
+    """
+    subscription = req.model
+    if not APIDB.get_user_club_role(req.user, subscription.club) == "OWNER":
+        raise AuthenticationError("User is not a OWNER")
+    APIDB.deactivate(subscription)
     return HttpEmpty()
 
 
