@@ -7,7 +7,7 @@ import webtest
 
 from api_db_utils import APIDB
 from api_trainee import app
-from gymcentral.auth import GCAuth
+from gaebasepy.auth import GCAuth
 
 
 __author__ = 'stefano'
@@ -16,8 +16,8 @@ import unittest
 
 from google.appengine.ext import testbed
 
-logging.config.fileConfig('logging.conf')
-logger = logging.getLogger('myLogger')
+# logging.config.fileConfig('logging.conf')
+# logger = logging.getLogger('myLogger')
 
 import time
 
@@ -45,7 +45,6 @@ class NDBTestCase(unittest.TestCase):
         self.testbed.init_memcache_stub()
         self.testbed.init_urlfetch_stub()
         self.testbed.init_taskqueue_stub()
-        logger.debug("here we are")
         self.app = webtest.TestApp(app)
         # self.app_coach = webtest.TestApp(app_coach)
 

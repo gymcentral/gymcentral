@@ -13,17 +13,17 @@ from app import app
 from api_trainee import trainee_course_list, trainee_club_details, trainee_club_members
 from api_db_utils import APIDB
 from auth import user_has_role
-from gymcentral.auth import user_required
-from gymcentral.exceptions import BadParameters, AuthenticationError
-from gymcentral.gc_utils import sanitize_json, sanitize_list, json_from_paginated_request, \
+from gaebasepy.auth import user_required
+from gaebasepy.exceptions import BadParameters, AuthenticationError
+from gaebasepy.gc_utils import sanitize_json, sanitize_list, json_from_paginated_request, \
     json_from_request, date_to_js_timestamp
-from gymcentral.http_codes import HttpEmpty, HttpCreated
+from gaebasepy.http_codes import HttpEmpty, HttpCreated
 
 
 APP_COACH = "api/coach"
 
-logging.config.fileConfig('logging.conf')
-logger = logging.getLogger('myLogger')
+# logging.config.fileConfig('logging.conf')
+# logger = logging.getLogger('myLogger')
 
 
 @app.route('/%s/users/current' % APP_COACH, methods=('GET',))
@@ -50,11 +50,12 @@ def coach_club_create(req):
 
     Create a club.
     """
-    j_req = json_from_request(req, ["name", "description", "url", "isOpen"])
-    club = APIDB.create_club(j_req)
+    j_req = json_from_request(req, ["name", "description", "url", "isOpen",'tags'])
+    club = APIDB.create_club(**j_req)
     APIDB.add_owner_to_club(req.user, club)
     # users the rendering of club details, add 201 code
-    return HttpCreated(coach_club_details(dict(model=club), None))
+    req.model = club
+    return HttpCreated(coach_club_details(req, None))
 
 
 @app.route('/%s/clubs/<uskey_club>' % APP_COACH, methods=('GET',))
@@ -72,20 +73,22 @@ def coach_club_details(req, uskey_club):
                                       ['name', 'start_date', 'end_date', 'course_type'])
     j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['name', 'picture'])
     return sanitize_json(j_club, ['id', 'name', 'description', 'url', 'creation_date', 'is_open', 'owners',
-                                  'member_count', 'courses'])
+                                  'member_count', 'courses','tags'])
 
 
 @app.route('/%s/clubs/<uskey_club>' % APP_COACH, methods=('PUT',))
 @user_has_role(["TRAINER", "OWNER"])
 def coach_club_update(req, uskey_club):
     """
-    ``GET`` @ |ca| +  ``/clubs/<uskey_club>``
+    ``PUT`` @ |ca| +  ``/clubs/<uskey_club>``
 
     Update  a club. |uroleOT|
     """
-    j_req = json_from_request(req, ["name", "description", "url", "isOpen"])
-    APIDB.update_club(req.model, j_req)
-    return coach_club_details(dict(model=req.model), None)
+    j_req = json_from_request(req, optional_props=["name", "description", "url", "isOpen", "tags"])
+    print j_req
+    updated, club = APIDB.update_club(req.model, **j_req)
+    req.model = club
+    return coach_club_details(req, None)
 
 
 @app.route('/%s/clubs/<uskey_club>' % APP_COACH, methods=('DELETE',))

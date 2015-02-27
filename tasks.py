@@ -2,15 +2,15 @@ import json
 import logging
 import logging.config
 from google.appengine.api import urlfetch
-from gymcentral.gc_utils import camel_case, json_serializer, sanitize_json
+from gaebasepy.gc_utils import camel_case, json_serializer, sanitize_json
 
 import models
 
 
 __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 
-logging.config.fileConfig('logging.conf')
-logger = logging.getLogger('myLogger')
+# logging.config.fileConfig('logging.conf')
+# logger = logging.getLogger('myLogger')
 
 def sync_user(user,token):
     url = "http://rt-test.calocode.com/sync-user/"
@@ -20,7 +20,7 @@ def sync_user(user,token):
     # token = str(user_id) + "|" + user_token
     d['token'] = token
     data = json.dumps(camel_case(d), default=json_serializer)
-    logger.debug(data)
+    logging.debug(data)
     # data = json.dumps(data)
     result = urlfetch.fetch(url=url,
                             payload=data,

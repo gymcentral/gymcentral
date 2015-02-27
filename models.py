@@ -5,8 +5,9 @@ import logging.config
 
 from google.appengine.api.datastore_errors import BadValueError
 from google.appengine.ext.ndb.key import Key
-
-
+from gaebasepy.exceptions import AuthenticationError, BadParameters
+from gaebasepy.gc_models import GCModel, GCModelMtoMNoRep, GCUser
+from gaebasepy.gc_utils import date_to_js_timestamp
 
 
 __author__ = 'fab,stefano.tranquillini'
@@ -15,8 +16,8 @@ from google.appengine.ext import ndb, deferred
 
 # TODO create a GCMOdel for the support table that automatically has the get/build id
 
-logging.config.fileConfig('logging.conf')
-logger = logging.getLogger('myLogger')
+# logging.config.fileConfig('logging.conf')
+# logger = logging.getLogger('myLogger')
 
 
 class Version(ndb.Model):
@@ -194,7 +195,7 @@ class Club(GCModel):
     creation_date = ndb.DateTimeProperty(auto_now_add=True)
     update_date = ndb.DateTimeProperty(auto_now=True)
     name = ndb.StringProperty(required=True)
-    email = ndb.StringProperty(required=True)
+    email = ndb.StringProperty(required=False)
     description = ndb.StringProperty()
     url = ndb.StringProperty(required=True)
     is_deleted = ndb.BooleanProperty(default=False)
@@ -281,7 +282,6 @@ class Session(GCModel):
             try:
                 self.profile = json.loads(self.profile)
             except Exception as ex:
-                logger.error(ex)
                 raise BadValueError("Profile must be a valid json")
 
     def is_valid(self):

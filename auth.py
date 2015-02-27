@@ -1,6 +1,6 @@
 import cfg
-from gymcentral.auth import GCAuth
-from gymcentral.exceptions import AuthenticationError, NotFoundException
+from gaebasepy.auth import GCAuth
+from gaebasepy.exceptions import AuthenticationError, NotFoundException
 from models import Club, ClubMembership, CourseSubscription, CourseTrainers, Course, Session, Exercise
 
 # this beacuse the decorator is needed to create the docs but not to run the project

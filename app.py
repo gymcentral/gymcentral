@@ -5,10 +5,10 @@ App
 from google.appengine.ext.ndb.key import Key
 from api_db_utils import APIDB
 import cfg
-from gymcentral.app import WSGIApp
-from gymcentral.auth import GCAuth
-from gymcentral.exceptions import NotFoundException, AuthenticationError
-from gymcentral.gc_utils import camel_case
+from gaebasepy.app import WSGIApp
+from gaebasepy.auth import GCAuth
+from gaebasepy.exceptions import NotFoundException, AuthenticationError
+from gaebasepy.gc_utils import camel_case
 
 __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 
@@ -55,6 +55,8 @@ class GCApp(WSGIApp):
                             if not user.active_club:
                                 raise AuthenticationError("user has not active club")
                             club = APIDB.get_club_by_id(user.active_club)
+                            if not club:
+                                raise AuthenticationError("user has not active club")
                             setattr(request, cfg.MODEL_NAME, club)
                     return request
         return request

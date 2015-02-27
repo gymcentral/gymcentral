@@ -25,6 +25,12 @@ indexes:
 # automatically uploaded to the admin console when you next deploy
 # your application using appcfg.py.
 
+- kind: Course
+  properties:
+  - name: Club
+  - name: is_deleted
+  - name: end_date
+
 - kind: ExercisePerformance
   properties:
   - name: session

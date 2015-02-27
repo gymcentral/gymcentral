@@ -13,9 +13,9 @@ import datetime
 
 from api_db_utils import APIDB
 from auth import user_has_role
-from gymcentral.auth import GCAuth, user_required
-from gymcentral.exceptions import AuthenticationError, BadParameters, NotFoundException, BadRequest
-from gymcentral.gc_utils import sanitize_json, sanitize_list, json_from_paginated_request, \
+from gaebasepy.auth import GCAuth, user_required
+from gaebasepy.exceptions import AuthenticationError, BadParameters, NotFoundException, BadRequest
+from gaebasepy.gc_utils import sanitize_json, sanitize_list, json_from_paginated_request, \
     json_from_request, date_to_js_timestamp
 import logging.config
 
@@ -23,8 +23,8 @@ import logging.config
 
 APP_TRAINEE = "api/trainee"
 
-logging.config.fileConfig('logging.conf')
-logger = logging.getLogger('myLogger')
+# logging.config.fileConfig('logging.conf')
+# logger = logging.getLogger('myLogger')
 
 # NOTE: functions with ``current`` have to go before the ones with ``<id>``
 
@@ -92,7 +92,6 @@ def trainee_profile(req):
         return sanitize_json(req.user, out)
     elif req.method == "PUT":
         j_req = json_from_request(req, accept_all=True)
-        logger.debug("jreq %s",j_req)
         update, user = APIDB.update_user(req.user, **j_req)
         s_token = GCAuth.auth_user_token(user)
         deferred.defer(sync_user, user, s_token)

@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 import webtest
 
 from api_db_utils import APIDB
-from gymcentral.auth import GCAuth
-from gymcentral.gc_utils import date_to_js_timestamp
+from gaebasepy.auth import GCAuth
+from gaebasepy.gc_utils import date_to_js_timestamp
 from api_admin import app
 from api_coach import app
 from api_trainee import app

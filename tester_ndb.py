@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from gymcentral.exceptions import ServerError
+from gaebasepy.exceptions import ServerError
 from models import Course, Session, Performance, Exercise, Level, CourseSubscription, Participation, TimeData
 
 

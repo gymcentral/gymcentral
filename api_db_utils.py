@@ -10,7 +10,7 @@ from google.appengine.ext.ndb.key import Key
 from google.appengine.ext.ndb.query import Query
 
 import cfg
-from gymcentral.exceptions import ServerError, BadParameters
+from gaebasepy.exceptions import ServerError, BadParameters
 import models
 
 
@@ -167,6 +167,7 @@ class APIDB():
         :param args: dict containing the values to update
         :return: Tuple -> Bool, Object
         """
+        print args
         return cls.__update(club, not_allowed=not_allowed, **args)
 
     @classmethod

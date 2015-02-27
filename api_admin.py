@@ -7,8 +7,8 @@ import json
 
 import webapp2
 
-from gymcentral.auth import GCAuth
-from gymcentral.exceptions import AuthenticationError
+from gaebasepy.auth import GCAuth
+from gaebasepy.exceptions import AuthenticationError
 from tasks import sync_user
 
 
@@ -27,8 +27,8 @@ from app import app
 
 APP_ADMIN = "api/admin"
 
-logging.config.fileConfig('logging.conf')
-logger = logging.getLogger('myLogger')
+# logging.config.fileConfig('logging.conf')
+# logging = logging.getLogger('myLogger')
 
 
 
@@ -59,7 +59,7 @@ def auth(req, provider, token):  # pragma: no cover
     if error:
         raise AuthenticationError(error)
     # check if user exists..
-    logger.debug("%s %s %s" % (d_user, token, error))
+    logging.debug("%s %s %s" % (d_user, token, error))
     auth_id = str(provider) + ":" + d_user['id']
     user = User.get_by_auth_id(auth_id)
     email = d_user['email']
@@ -94,17 +94,16 @@ def auth(req, provider, token):  # pragma: no cover
         else:
             raise AuthenticationError("provider not allowed")
         if not created:
-            logger.error(
+            logging.error(
                 "something is wrong with user %s with this token %s and this provider %s - unique %s" % (
                     d_user, token, provider, user))
             raise AuthenticationError(
                 "Something is wrong with your account, these properties must be unique %s." % user)
 
     s_token = GCAuth.auth_user_token(user)
-    logger.warning("create a cron job to remove expired tokens")
     response = webapp2.Response(content_type='application/json', charset='UTF-8')
     if created:
-        response.status_code = 201
+        response.status = 201
     cookie = GCAuth.get_secure_cookie(token)
     response.set_cookie('gc_token', cookie, secure=False,
                         max_age=int(cfg.AUTH_TOKEN_MAX_AGE), domain="/")
