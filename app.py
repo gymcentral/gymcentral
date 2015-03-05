@@ -9,6 +9,7 @@ from gaebasepy.app import WSGIApp
 from gaebasepy.auth import GCAuth
 from gaebasepy.exceptions import NotFoundException, AuthenticationError
 from gaebasepy.gc_utils import camel_case
+from gaebasepy.http_codes import GCHttpCode
 
 __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 
@@ -22,7 +23,7 @@ class GCApp(WSGIApp):
     @staticmethod
     def edit_request(router, request, response):  # pragma: no cover
         """
-        Automatically loads into ``requst.model`` (``.model`` is set in ``cfg.MODEL_NAME``) the object reterived from
+        Automatically loads into ``request.model`` (``.model`` is set in ``cfg.MODEL_NAME``) the object reterived from
         the parameter passed.
 
         - The parameter **must** be a ``Key`` encoded as ``urlsafe``.
@@ -35,6 +36,16 @@ class GCApp(WSGIApp):
         :param response: the response
         :return: the request edited
         """
+        # check that there's a valid app code
+        # depending on the url...
+        app_id = request.headers.get("X-App-Id")
+        if "trainee" in request.url:
+            if not app_id in cfg.APPIDS_TRAINEE:
+                raise AuthenticationError("%s %s %s" % (app_id, cfg.APPIDS_TRAINEE, (app_id in cfg.APPIDS_TRAINEE)))
+        elif "coach" in request.url:
+            if not app_id in cfg.APPIDS_COACH:
+                raise AuthenticationError()
+
         kwargs = router.match(request)[2]
         if kwargs:
             if len(kwargs) == 1:
@@ -42,6 +53,8 @@ class GCApp(WSGIApp):
                 # i suppose that 'uskey' for the name is used when it's a UrlSafeKEY.
                 # this kind of key can be loaded here
                 if key.startswith("uskey"):
+                    if hasattr(request,'model'):
+                        return request
                     if value != "current":
                         try:
                             model = Key(urlsafe=value).get()
@@ -49,7 +62,7 @@ class GCApp(WSGIApp):
                         except:
                             raise NotFoundException()
                     else:
-                        # it's current,
+                        # it's current, so get current club or NOne
                         if key.endswith("club"):
                             user = GCAuth.get_user(request)
                             if not user.active_club:
@@ -69,7 +82,10 @@ class GCApp(WSGIApp):
         :param rv: the response
         :return: the edited response
         """
-        rv = camel_case(rv)
+        if isinstance(rv, GCHttpCode):
+            rv.message = camel_case(rv.message)
+        else:
+            rv = camel_case(rv)
         return rv
 
 # data

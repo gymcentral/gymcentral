@@ -1,10 +1,9 @@
 from datetime import datetime
 import json
-import logging
-import logging.config
 
 from google.appengine.api.datastore_errors import BadValueError
 from google.appengine.ext.ndb.key import Key
+
 from gaebasepy.exceptions import AuthenticationError, BadParameters
 from gaebasepy.gc_models import GCModel, GCModelMtoMNoRep, GCUser
 from gaebasepy.gc_utils import date_to_js_timestamp
@@ -12,7 +11,7 @@ from gaebasepy.gc_utils import date_to_js_timestamp
 
 __author__ = 'fab,stefano.tranquillini'
 
-from google.appengine.ext import ndb, deferred
+from google.appengine.ext import ndb
 
 # TODO create a GCMOdel for the support table that automatically has the get/build id
 
@@ -62,22 +61,23 @@ class User(GCUser):
                                             ClubMembership.is_active == True))
 
     def membership_type(self, club):
-        membership = ndb.Key(ClubMembership, ClubMembership.build_id(self.key, club.key)).get()
+        membership = ndb.Key(ClubMembership, ClubMembership.build_id(self, club)).get()
         if membership and membership.is_active:
-            return membership.mebership_type
+            return membership.membership_type
         raise AuthenticationError("User is not connected to the Club")
 
     # def _post_put_hook(self, future):
-    #     # this is needed for the realtime API
-    #     # deferred.defer(sync_user, self)
+    # # this is needed for the realtime API
+    # # deferred.defer(sync_user, self)
 
     def to_dict(self):
-        d = super(User,self).to_dict()
+        d = super(User, self).to_dict()
         del d['updated']
         del d['created']
         del d['auth_ids']
         del d['password']
         return d
+
 
 class Course(GCModel):
     name = ndb.StringProperty(required=True)
@@ -161,6 +161,9 @@ class CourseSubscription(GCModelMtoMNoRep):
                                   required=True)
     creation_date = ndb.DateTimeProperty(auto_now=True)
     observations = ndb.StructuredProperty(Observation, repeated=True)
+
+    # def to_dict(self):
+    # result = super(CourseSubscription, self).to_dict()
 
 
 class ClubMembership(GCModelMtoMNoRep):
@@ -379,6 +382,15 @@ class Level(GCModel):
     # we do like this to enable updates of the indicators.
     details_list = ndb.JsonProperty(default=[])
 
+    def __init__(self, *args, **kwds):
+        if 'details' in kwds:
+            details = kwds.pop('details')
+            l = [(detail['id'], detail['value']) for detail in details]
+            kwds['details_list'] = l
+
+        super(Level, self).__init__(*args, **kwds)
+
+
     @property
     def details(self):
         ret = []
@@ -516,6 +528,7 @@ class Indicator(GCModel):
     description = ndb.StringProperty(required=True)
     possible_answers = ndb.StructuredProperty(PossibleAnswer, repeated=True)
     required = ndb.BooleanProperty(default=True)
+    created_for = ndb.KeyProperty(kind='User', required=True)
 
 
 class Exercise(GCModel):

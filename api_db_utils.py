@@ -1,6 +1,8 @@
 """
 This file contains the class that abstract the ndb database and provides functions to access it.
 """
+from models import Club
+
 __author__ = 'stefano tranquillini'
 
 import datetime
@@ -34,6 +36,9 @@ class APIDB():
     model_exercise = models.Exercise
     model_time_data = models.TimeData
     model_performance = models.Performance
+    model_level = models.Level
+    model_detail = models.Detail
+    model_indicator = models.Indicator
 
     @classmethod
     def create_user(cls, auth_id, unique_properties=None, **user_values):
@@ -167,7 +172,6 @@ class APIDB():
         :param args: dict containing the values to update
         :return: Tuple -> Bool, Object
         """
-        print args
         return cls.__update(club, not_allowed=not_allowed, **args)
 
     @classmethod
@@ -197,8 +201,8 @@ class APIDB():
     # Allows to execute queries on the club objec
     #
     # :param query:
-    #     :param kwargs:
-    #     :return:
+    # :param kwargs:
+    # :return:
     #     """
     #     if query:
     #         return cls.__get(cls.model_club.query(query), **kwargs)
@@ -436,6 +440,7 @@ class APIDB():
         :return: a list of Exercises
         """
         return cls.__get(cls.model_exercise.query(cls.model_exercise.created_for == club.key), **kwargs)
+
 
     # [END] club
 
@@ -942,6 +947,62 @@ class APIDB():
     # [END] Session
 
     # [START] Exercise
+
+    @classmethod
+    def create_activity(cls, club, **args):
+        """
+        Creates an activity
+
+        :param club: the club to which the activity belongs
+        :param args: dict containing the data of the activity
+        :return: the activity
+        """
+        exercise = cls.model_exercise()
+        exercise.created_for = club.key
+        cls.__create(exercise, **args)
+        return exercise
+
+    def update_activity(cls, activity, **args):
+        """
+        Updates an activity
+
+        :param activity: the activity to edit
+        :param args: dict containing the data of the activity
+        :return: the activity
+        """
+        updated, obj = cls.__update(activity, **args)
+        return obj
+
+    @classmethod
+    def create_level(cls, exercise, **args):
+        """
+        Creates a level
+
+        :param exercise: the activity to which the level belongs
+        :param args: dict containing the data of the level
+        :return: the level
+        """
+        level = cls.model_level()
+        level = cls.__create(level, **args)
+        return level
+
+    @classmethod
+    def update_level(cls, level, **args):
+        """
+        Updates a level
+
+        :param level: the level to update
+        :param args: dict containing the data of the level
+        :return: the level
+        """
+        details = args.pop('details')
+        level.details_list = []
+        for detail in details:
+            level.add_detail(detail)
+        cls.__update(level, **args)
+
+        return level
+
     @classmethod
     def get_activity_levels(cls, exercise, **kwargs):
         """
@@ -988,6 +1049,7 @@ class APIDB():
             if level.level_number == activity_level:
                 return level
         raise ServerError("Level for this activity cannot be found")
+
 
     # [END] Exercise
 
@@ -1081,6 +1143,7 @@ class APIDB():
             performance.add_indicator(indicator['id'], indicator['value'])
         performance.put()
         return performance
+
     # [END] Performances
 
     # [BEGIN] Subscriptions
@@ -1098,6 +1161,82 @@ class APIDB():
         return cls.__update(user, not_allowed=not_allowed, **values)
 
     #[END] Subscriptions
+
+    #[BEGIN] details
+    @classmethod
+    def get_club_details(cls, club, **kwargs):
+        """
+        Gets the list of details created for a club
+
+        :param club: The club
+        :param kwargs: usual kwargs
+        :return: list of details
+        """
+        return cls.__get(cls.model_detail.query(cls.model_detail.created_for == club.key), **kwargs)
+
+    @classmethod
+    def create_detail(cls, club, **args):
+        """
+        Creates a detail
+
+        :param club: the club for which the detail is created
+        :param args: usual args
+        :return: the detail
+        """
+        detail = models.Detail
+        detail.created_for = club.key
+        return cls.__create(detail, **args)
+
+    @classmethod
+    def update_detail(cls, detail, **args):
+        """
+        Updates a detail
+
+        :param detail: the detail to update
+        :param args: usual args
+        :return: the detail
+        """
+        return cls.__update(detail, **args)
+
+    #[END] details
+
+    #[BEGIN] indicators
+    @classmethod
+    def get_club_indicators(cls, club, **kwargs):
+        """
+        Gets the list of indicators created for a club
+
+        :param club: The club
+        :param kwargs: usual kwargs
+        :return: list of indicators
+        """
+        return cls.__get(cls.model_indicator.query(cls.model_indicator.created_for == club.key), **kwargs)
+
+    @classmethod
+    def create_indicator(cls, club, **args):
+        """
+        Creates a indicator
+
+        :param club: the club for which the detail is created
+        :param args: usual args
+        :return: the indicator
+        """
+        indicator = models.Indicator
+        indicator.created_for = club.key
+        return cls.__create(indicator, **args)
+
+    @classmethod
+    def update_indicator(cls, indicator, **args):
+        """
+        Updates an indicator
+
+        :param indicator: the v to update
+        :param args: usual args
+        :return: the detail
+        """
+        return cls.__update(indicator, **args)
+
+    #[END] indicators
 
     @classmethod
     def deactivate(cls, obj):

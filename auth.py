@@ -1,19 +1,24 @@
+import logging
+import logging.config
 import cfg
 from gaebasepy.auth import GCAuth
 from gaebasepy.exceptions import AuthenticationError, NotFoundException
-from models import Club, ClubMembership, CourseSubscription, CourseTrainers, Course, Session, Exercise
+from models import Club, ClubMembership, CourseSubscription, CourseTrainers, Course, Session, Exercise, Indicator, \
+    Detail
 
 # this beacuse the decorator is needed to create the docs but not to run the project
 # http://stackoverflow.com/questions/3687046/python-sphinx-autodoc-and-decorated-members
-try:
-    from decorator import decorator
-except ImportError:
-    # No decorator package available. Create a no-op "decorator".
-    def decorator(f):
-        return f
+# try:
+# from decorator import decorator
+# except ImportError:
+#     # No decorator package available. Create a no-op "decorator".
+#     def decorator(f):
+#         return f
 
 __author__ = 'stefano'
 
+logging.config.fileConfig('logging.conf')
+logger = logging.getLogger('myLogger')
 
 def __club_role(user, club, roles):
     rel = ClubMembership.get_by_id(user, club)
@@ -56,16 +61,15 @@ def __club_membership_role(user, club, roles):
         raise AuthenticationError("You are not trainer nor owner of this club")
 
 
-
-
 def user_has_role(roles):
     # this works only for gymcentral
-    @decorator
+    # @decorator
     def has_role_real(handler):
         """
         Checks if the user has the correct roles.
 
         """
+
         def wrapper(req, *args, **kwargs):
             #
             if not hasattr(req, 'user'):
@@ -78,6 +82,9 @@ def user_has_role(roles):
                 if not hasattr(req, cfg.MODEL_NAME):
                     raise NotFoundException
                 obj = getattr(req, cfg.MODEL_NAME)
+                obj = obj.key.get()
+                print ("MY DEBUG: %s %s" % (type(obj), isinstance(obj,Club)))
+                # logger.debug("OBJ " + str(type(obj) is Club))
                 if isinstance(obj, Club):
                     __club_role(req.user, obj, roles)
                 elif isinstance(obj, Course):
@@ -90,10 +97,12 @@ def user_has_role(roles):
                 elif isinstance(obj, CourseSubscription):
                     # TODO: check if this condition is enough for everybody
                     __course_role(req.user, obj.course, roles)
-                elif isinstance(obj, Exercise):
+                elif isinstance(obj, (Exercise, Indicator, Detail)):
                     __club_role(req.user, obj.created_for, roles)
                 else:
-                    raise AuthenticationError("Object has not role")
+                    raise AuthenticationError("Object %s not known" % type(obj))
                 return handler(req, *args, **kwargs)
+
         return wrapper
+
     return has_role_real

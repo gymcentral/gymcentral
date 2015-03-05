@@ -27,10 +27,6 @@ from app import app
 
 APP_ADMIN = "api/admin"
 
-# logging.config.fileConfig('logging.conf')
-# logging = logging.getLogger('myLogger')
-
-
 
 # ------------------------------ ADMIN -----------------------------------------------
 @app.route("/%s/auth/<provider>/<token>" % APP_ADMIN, methods=('GET',))
@@ -179,25 +175,24 @@ def delete_auth(req):  # pragma: no cover
 
 # # part of admin but just testing calls.
 #
-# @app.route("/%s/hw" % APP_ADMIN, methods=('GET', ))
-# def hw(req):  # pragma: no cover
-#     '''
-#     ``GET`` @ ``/api/admin`` ``/hw``
+@app.route("/%s/hw" % APP_ADMIN, methods=('GET', ))
+def hw(req):  # pragma: no cover
+    '''
+    ``GET`` @ ``/api/admin`` ``/hw``
+
+    Test function that replies "hello world"
+    '''
+    return "hello world!"
 #
-#     Test function that replies "hello world"
-#     '''
-#     logger.debug("hello world")
-#     return "hello world!"
 #
-#
-# @app.route("/%s/hw/<uskey_obj>" % APP_ADMIN, methods=('GET', ))
-# def hw_par(req, uskey_obj):  # pragma: no cover
-#     '''
-#     ``GET`` @ ``/api/admin`` ``/hw/<value>``
-#
-#     Test function that replies the value passed in the URL
-#     '''
-#     return uskey_obj
+@app.route("/%s/hw/<uskey_obj>" % APP_ADMIN, methods=('GET', ))
+def hw_par(req, uskey_obj):  # pragma: no cover
+    '''
+    ``GET`` @ ``/api/admin`` ``/hw/<value>``
+
+    Test function that replies the value passed in the URL
+    '''
+    return uskey_obj
 #
 #
 # @app.route("/%s/hw" % APP_ADMIN, methods=('POST', ))

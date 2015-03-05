@@ -1,19 +1,21 @@
+import logging
+
+from google.appengine.ext import deferred
 from google.appengine.ext.ndb.key import Key
 
 from models import Observation
+from tasks import sync_user
 
 
 __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 
-import logging
 import datetime
-import logging.config
 
 from app import app
 from api_trainee import trainee_course_list, trainee_club_details, trainee_club_members
 from api_db_utils import APIDB
 from auth import user_has_role
-from gaebasepy.auth import user_required
+from gaebasepy.auth import user_required, GCAuth
 from gaebasepy.exceptions import BadParameters, AuthenticationError
 from gaebasepy.gc_utils import sanitize_json, sanitize_list, json_from_paginated_request, \
     json_from_request, date_to_js_timestamp
@@ -23,10 +25,10 @@ from gaebasepy.http_codes import HttpEmpty, HttpCreated
 APP_COACH = "api/coach"
 
 # logging.config.fileConfig('logging.conf')
-# logger = logging.getLogger('myLogger')
+logger = logging.getLogger('test_log')
 
 
-@app.route('/%s/users/current' % APP_COACH, methods=('GET',))
+@app.route('/%s/users/current' % APP_COACH, methods=('GET', 'PUT'))
 @user_required
 def coach_profile(req):
     """
@@ -34,12 +36,22 @@ def coach_profile(req):
 
     Profile of the current user |ul|
     """
-    j_user = req.user.to_dict()
-    j_user['memberships'] = sanitize_list(APIDB.get_user_member_of_type(req.user, ['OWNER', 'TRAINER']),
-                                          ['id', 'name', 'description'])
     out = ['id', 'name', 'nickname', 'gender', 'picture', 'avatar', 'birthday', 'country', 'city', 'language',
            'email', 'phone', 'memberships']
-    return sanitize_json(j_user, out)
+    if req.method == "GET":
+        j_user = req.user.to_dict()
+        j_user['memberships'] = sanitize_list(APIDB.get_user_member_of_type(req.user, ['OWNER', 'TRAINER']),
+                                              ['id', 'name', 'description'])
+        return sanitize_json(j_user, out)
+    elif req.method == "PUT":
+        j_req = json_from_request(req, accept_all=True)
+        update, user = APIDB.update_user(req.user, **j_req)
+        j_user = user.to_dict()
+        j_user['memberships'] = sanitize_list(APIDB.get_user_member_of_type(req.user, ['OWNER', 'TRAINER']),
+                                              ['id', 'name', 'description'])
+        s_token = GCAuth.auth_user_token(user)
+        deferred.defer(sync_user, user, s_token)
+        return sanitize_json(j_user, out)
 
 
 @app.route('/%s/clubs' % APP_COACH, methods=('POST',))
@@ -50,7 +62,7 @@ def coach_club_create(req):
 
     Create a club.
     """
-    j_req = json_from_request(req, ["name", "description", "url", "isOpen",'tags'])
+    j_req = json_from_request(req, mandatory_props=["name", "description", "url", "isOpen", 'tags'])
     club = APIDB.create_club(**j_req)
     APIDB.add_owner_to_club(req.user, club)
     # users the rendering of club details, add 201 code
@@ -69,11 +81,12 @@ def coach_club_details(req, uskey_club):
     club = req.model
     j_club = club.to_dict()
     j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
+    j_club['course_count'] = APIDB.get_club_courses(club, count_only=True)
     j_club['courses'] = sanitize_list(APIDB.get_club_courses(club),
                                       ['name', 'start_date', 'end_date', 'course_type'])
     j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['name', 'picture'])
     return sanitize_json(j_club, ['id', 'name', 'description', 'url', 'creation_date', 'is_open', 'owners',
-                                  'member_count', 'courses','tags'])
+                                  'member_count', 'course_count', 'courses', 'tags'])
 
 
 @app.route('/%s/clubs/<uskey_club>' % APP_COACH, methods=('PUT',))
@@ -85,8 +98,8 @@ def coach_club_update(req, uskey_club):
     Update  a club. |uroleOT|
     """
     j_req = json_from_request(req, optional_props=["name", "description", "url", "isOpen", "tags"])
-    print j_req
-    updated, club = APIDB.update_club(req.model, **j_req)
+    club = req.model
+    APIDB.update_club(req.model, **j_req)
     req.model = club
     return coach_club_details(req, None)
 
@@ -122,17 +135,20 @@ def coach_club_membership_create(req, uskey_club):
 
     Add a membership for the user specified in the body ``userId``. |uroleOT|
     """
-    j_req = json_from_request(req, ["userId", "type"], ["endDate"])
+    # FIXME: how delete works?
+    j_req = json_from_request(req, ["userId", "membershipType"], [("endDate", None)])
     user = APIDB.get_user_by_id(j_req['user_id'])
-    if j_req['type'] == "MEMBER":
+    membership_type = j_req.pop('membership_type')
+    if membership_type == "MEMBER":
         APIDB.add_member_to_club(user, req.model, status="ACCEPTED", end_date=j_req['end_date'])
-    elif j_req['type'] == "TRAINER":
+    elif membership_type == "TRAINER":
         APIDB.add_trainer_to_club(user, req.model, status="ACCEPTED", end_date=j_req['end_date'])
-    elif j_req['type'] == "OWNER":
+    elif membership_type == "OWNER":
         APIDB.add_owner_to_club(user, req.model, end_date=j_req['end_date'])
     else:
         raise BadParameters("Value %s is not valid for field 'type'" % j_req['type'])
-    return HttpCreated(coach_club_membership(dict(model=APIDB.get_membership(user, req.model)), None))
+    req.model = APIDB.get_membership(user, req.model)
+    return HttpCreated(coach_club_membership(req, None))
 
 
 @app.route('/%s/memberships/<uskey_membership>' % APP_COACH, methods=('GET',))
@@ -143,13 +159,14 @@ def coach_club_membership(req, uskey_membership):
 
     Detail of a membership. |uroleOT|
     """
+
     membership = req.model
     member = membership.get_member
     club = membership.get_club
     ret = membership.to_dict()
     ret['user'] = sanitize_json(member.to_dict(), ['id', 'nickname', 'avatar'])
     # ret['course_count'] = APIDB.get_club_courses(club, count_only=True)
-    if membership.role == "TRAINER":
+    if membership.membership_type == "TRAINER":
         courses = APIDB.get_club_courses_im_trainer_of(member, club)
     else:
         courses = APIDB.get_club_courses(club)
@@ -437,6 +454,21 @@ def coach_course_subscription_create(req, uskey_course):
     return HttpEmpty()
 
 
+@app.route('/%s/subscriptions/<uskey_subscription>' % APP_COACH, methods=('GET',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_course_subscription_create(req, uskey_course):
+    """
+    ``GET`` @ |ca| +  ``/subscriptions/<uskey_subscription>``
+
+    GET a subscription. |uroleO|
+    """
+    subscription = req.model
+    user = subscription.member.get()
+    res = sanitize_json(subscription, ['id', 'start_date', 'profileLevel', 'observations'])
+    res['user'] = sanitize_json(user, ['id', 'name', 'picture'])
+    return
+
+
 @app.route('/%s/subscriptions/<uskey_subscription>' % APP_COACH, methods=('PUT',))
 @user_has_role(["TRAINER", "OWNER"])
 def coach_course_subscription_create(req, uskey_course):
@@ -501,6 +533,36 @@ def coach_club_activities(req, uskey_club):
     return dict(results=ret, total=total)
 
 
+@app.route('/%s/clubs/<uskey_club>/activities' % APP_COACH, methods=('POST',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_club_activities_create(req, uskey_club):
+    """
+    ``POST`` @ |ca| +  ``/clubs/<uskey_club>/activities``
+
+    Creates an activity for a club. |uroleOT|
+    """
+    club = req.model
+    j_req = json_from_request(req, mandatory_props=['name', 'description', 'indicators'])
+    activity = APIDB.create_activity(club, **j_req)
+    req.model = activity
+    return coach_activities_detail(req, None)
+
+
+@app.route('/%s/activities/<uskey_activity>' % APP_COACH, methods=('PUT',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_club_activities_update(req, uskey_club):
+    """
+    ``POST`` @ |ca| +  ``/clubs/<uskey_club>/activities``
+
+    Creates an activity for a club. |uroleOT|
+    """
+    activity = req.model
+    j_req = json_from_request(req, optional_props=['name', 'description', 'indicators'])
+    activity = APIDB.update_activity(activity, **j_req)
+    req.model = activity
+    return coach_activities_detail(req, None)
+
+
 @app.route('/%s/activities/<uskey_activity>' % APP_COACH, methods=('GET',))
 @user_has_role(["TRAINER", "OWNER"])
 def coach_activities_detail(req, uskey_activity):
@@ -512,3 +574,168 @@ def coach_activities_detail(req, uskey_activity):
     activity = req.model
     # this should be enough. it's everything linked..
     return activity.to_dict()
+
+
+@app.route('/%s/activities/<uskey_activity>/levels' % APP_COACH, methods=('POST',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_activities_detail_create(req, uskey_activity):
+    """
+    ``POST`` @ |ca| +  ``/activities/<uskey_activity>/levels``
+
+    Creates a level for the specified acitvity. |uroleOT|
+    """
+    activity = req.model
+    j_req = json_from_request(req, mandatory_props=['name', 'description', 'level_number', 'source', 'details'])
+    level = APIDB.create_level(activity, j_req)
+    # this should be enough. it's everything linked..
+    return level.to_dict()
+
+
+@app.route('/%s/activities/<uskey_activity>/levels/<pos>' % APP_COACH, methods=('PUT',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_activities_detail_update(req, uskey_activity, pos):
+    """
+    ``PUT`` @ |ca| +  ``/activities/<uskey_activity>/levels/<pos>``
+
+    Updates a precise level of an activity. |uroleOT|
+    """
+    activity = req.model
+    j_req = json_from_request(req, mandatory_props=['name', 'description', 'level_number', 'source', 'details'])
+    try:
+        level = activity.levels[int(pos)]
+    except:
+        raise BadParameters("level n %s not found" % pos)
+    APIDB.update_level(level, j_req)
+
+    return level.to_dict()
+
+
+@app.route('/%s/activities/<uskey_activity>/levels/<pos>' % APP_COACH, methods=('DELETE',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_activities_detail_delete(req, uskey_activity, pos):
+    """
+    ``DELETE`` @ |ca| +  ``/activities/<uskey_activity>/levels/<pos>``
+
+    Deletes a precise level of an activity. |uroleOT|
+    """
+    activity = req.model
+    try:
+        # NOTE: probably is good to check that the list of level has all the levels
+        # so that [l1,l2,l3] and l2 is removed then l3 becomes l2
+        del activity.levels[int(pos)]
+    except:
+        raise BadParameters("level n %s not found" % pos)
+    return HttpEmpty()
+
+
+@app.route('/%s/clubs/<uskey_club>/details' % APP_COACH, methods=('GET',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_details_list(req, uskey_club):
+    """
+    ``GET`` @ |ca| +  ``/clubs/<uskey_club>/details``
+
+    Gets the list of details. |uroleOT|
+    """
+    club = req.model
+    j_req = json_from_paginated_request(req)
+    page = int(j_req['page'])
+    size = int(j_req['size'])
+    total, details = APIDB.get_club_details(club, page=page, size=size)
+    return dict(total=total, results=sanitize_list(details, allowed=['id', 'name', 'description']))
+
+
+@app.route('/%s/details/<uskey_detail>' % APP_COACH, methods=('GET',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_details_detail(req, uskey_detail):
+    """
+    ``GET`` @ |ca| +  ``/details/<uskey_detail``
+
+    Gets the detail of a detail. |uroleOT|
+    """
+    detail = req.model
+    return detail.to_dict()
+
+
+@app.route('/%s/clubs/<uskey_club>/details' % APP_COACH, methods=('POST',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_details_create(req, uskey_club):
+    """
+    ``POST`` @ |ca| +  ``/clubs/<uskey_club>/details``
+
+    Creates a detail. |uroleOT|
+    """
+    club = req.model
+    j_req = json_from_request(mandatory_props=['name', 'detail_type', 'description'])
+    detail = APIDB.create_detail(club, j_req)
+    return detail.to_dict()
+
+
+@app.route('/%s/details/<uskey_detail>' % APP_COACH, methods=('PUT',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_details_update(req, uskey_detail):
+    """
+    ``POST`` @ |ca| +  ``/details/<uskey_detail>``
+
+    Updates a detail. |uroleOT|
+    """
+    detail = req.model
+    j_req = json_from_request(optional_props=['name', 'detail_type', 'description'])
+    detail = APIDB.update_detail(detail, j_req)
+    return detail.to_dict()
+
+
+@app.route('/%s/clubs/<uskey_club>/indicators' % APP_COACH, methods=('GET',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_indicators_list(req, uskey_club):
+    """
+    ``GET`` @ |ca| +  ``/clubs/<uskey_club>/indicators``
+
+    Gets the list of indicators. |uroleOT|
+    """
+    club = req.model
+    j_req = json_from_paginated_request(req)
+    page = int(j_req['page'])
+    size = int(j_req['size'])
+    total, indicators = APIDB.get_club_indicators(club, page=page, size=size)
+    return dict(total=total, results=sanitize_list(indicators, allowed=['id', 'name', 'description']))
+
+
+@app.route('/%s/indicators/<uskey_indicator>' % APP_COACH, methods=('GET',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_details_detail(req, uskey_indicator):
+    """
+    ``GET`` @ |ca| +  ``/uskey_indicator``
+
+    Gets the detail of a indicator. |uroleOT|
+    """
+    indicator = req.model
+    return indicator.to_dict()
+
+
+@app.route('/%s/clubs/<uskey_club>/indicators' % APP_COACH, methods=('POST',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_indicators_create(req, uskey_club):
+    """
+    ``POST`` @ |ca| +  ``/clubs/<uskey_club>/indicators``
+
+    Creates an indicator |uroleOT|
+    """
+    club = req.model
+    j_req = json_from_request(mandatory_props=['name', 'indicator_type', 'description'],
+                              optional_props=['possibleAnswers', 'required'])
+    indicator = APIDB.create_indicator(club, j_req)
+    return indicator.to_dict()
+
+
+@app.route('/%s/indicators/<uskey_indicator>' % APP_COACH, methods=('PUT',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_indicators_update(req, uskey_indicator):
+    """
+    ``PUT`` @ |ca| +  ``/indicators/<uskey_indicator>``
+
+    Updates an indicator. |uroleOT|
+    """
+    indicator = req.model
+    j_req = json_from_request(optional_props=['name', 'indicator_type', 'description', 'possibleAnswers', 'required'])
+    indicator = APIDB.create_indicator(indicator, j_req)
+    return indicator.to_dict()

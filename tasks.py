@@ -2,6 +2,7 @@ import json
 import logging
 import logging.config
 from google.appengine.api import urlfetch
+import cfg
 from gaebasepy.gc_utils import camel_case, json_serializer, sanitize_json
 
 import models
@@ -13,6 +14,7 @@ __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 # logger = logging.getLogger('myLogger')
 
 def sync_user(user,token):
+    
     url = "http://rt-test.calocode.com/sync-user/"
     d = user.to_dict()
     # user_id = user.get_id()
@@ -22,7 +24,9 @@ def sync_user(user,token):
     data = json.dumps(camel_case(d), default=json_serializer)
     logging.debug(data)
     # data = json.dumps(data)
+    dpd = cfg.API_APP_CFG['gc']['dpd-ssh-key']
     result = urlfetch.fetch(url=url,
                             payload=data,
                             method=urlfetch.POST,
-                            headers={'Content-Type': 'application/json'})
+                            headers={'Content-Type': 'application/json',
+                                     'dpd-ssh-key':dpd})
