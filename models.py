@@ -6,7 +6,7 @@ from google.appengine.ext.ndb.key import Key
 
 from gaebasepy.gc_models import GCModel, GCModelMtoMNoRep, GCUser
 from gaebasepy.gc_utils import date_to_js_timestamp
-from geabasepy.exceptions import AuthenticationError
+from gaebasepy.exceptions import AuthenticationError, BadParameters
 
 
 __author__ = 'fab,stefano.tranquillini'
@@ -55,7 +55,8 @@ class User(GCUser):
                                             ClubMembership.membership_type == "OWNER",
                                             ClubMembership.is_active == True))
 
-    def member_of_type(self, membership_types=[]):
+    def member_of_type(self, membership_types=None):
+        if not membership_types: membership_types = []
         return ClubMembership.query(ndb.AND(ClubMembership.member == self.key,
                                             ClubMembership.membership_type.IN(membership_types),
                                             ClubMembership.is_active == True))
@@ -284,7 +285,6 @@ class Session(GCModel):
     on_after = ndb.KeyProperty(kind='Indicator', repeated=True)
     status = ndb.ComputedProperty(lambda self: self._compute_status())
 
-
     @property
     def active(self):
         return not self.canceled
@@ -299,11 +299,12 @@ class Session(GCModel):
     # @property
     # def get_exercises(self):
     # return ndb.get_multi(self.list_exercises)
+
     def _pre_put_hook(self):
         if isinstance(self.profile, str):
             try:
                 self.profile = json.loads(self.profile)
-            except Exception as ex:
+            except Exception:
                 raise BadValueError("Profile must be a valid json")
 
     def is_valid(self):
@@ -364,6 +365,7 @@ class Session(GCModel):
 
     @property
     def activity_count(self):
+        # noinspection PyTypeChecker
         return len(self.list_exercises)
 
 
@@ -409,10 +411,10 @@ class Level(GCModel):
 
         super(Level, self).__init__(*args, **kwds)
 
-
     @property
     def details(self):
         ret = []
+        # noinspection PyTypeChecker
         for detail in self.details_list:
             indicator = Key(urlsafe=detail['detail']).get()
             # we make a copy, it's direct access to it..
@@ -422,6 +424,7 @@ class Level(GCModel):
         return ret
 
     def add_detail(self, detail, value):
+        # noinspection PyTypeChecker
         for i_detail in self.details_list:
             if i_detail['detail'] == detail.id:
                 raise BadParameters("%s is already present in the object" % detail.name)
@@ -471,11 +474,13 @@ class Participation(GCModel):
 
     @property
     def participation_count(self):
-        return len(self.when)
+        # noinspection PyTypeChecker
+        return len(self.time)
 
     @property
     def indicators(self):
         ret = []
+        # noinspection PyTypeChecker
         for ind in self.indicator_list:
             indicator = Key(urlsafe=ind['indicator']).get()
             # we make a copy, it's direct access to it..
@@ -485,6 +490,7 @@ class Participation(GCModel):
         return ret
 
     def add_indicator(self, indicator, value):
+        # noinspection PyTypeChecker
         for i_detail in self.indicator_list:
             if i_detail['indicator'] == indicator.id:
                 raise BadParameters("%s is already present in the object" % indicator.name)
@@ -507,6 +513,7 @@ class Performance(GCModelMtoMNoRep):
     @property
     def indicators(self):
         ret = []
+        # noinspection PyTypeChecker
         for ind in self.indicator_list:
             indicator = Key(urlsafe=ind['indicator']).get()
             # we make a copy, it's direct access to it..
@@ -516,6 +523,7 @@ class Performance(GCModelMtoMNoRep):
         return ret
 
     def add_indicator(self, indicator, value):
+        # noinspection PyTypeChecker
         for i_detail in self.indicator_list:
             if i_detail['indicator'] == indicator.id:
                 raise BadParameters("%s is already present in the object" % indicator.name)
@@ -564,10 +572,13 @@ class Exercise(GCModel):
 
     @property
     def level_count(self):
+        # noinspection PyTypeChecker
         return len(self.levels)
 
     @property
     def indicator_count(self):
+        # noinspection PyTypeChecker
+        # noinspection PyTypeChecker
         return len(self.indicator_list)
 
     def to_dict(self):

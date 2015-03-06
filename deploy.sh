@@ -13,16 +13,16 @@ fi
 if grep -q "OK" result.test; then
     echo "Tests: OK"
     echo ""
-    echo "Creating documentation"
-    ./build_doc.sh >> doc_build.temp
-    if grep -q "build succeeded." doc_build.temp; then
+#    echo "Creating documentation"
+#    ./build_doc.sh >> doc_build.temp
+#    if grep -q "build succeeded." doc_build.temp; then
         echo "Documentation: OK"
         echo ""
         echo "Updating server"
         appcfg.py update .
-    else
-        echo "Error during the building of documentation"
-    fi
+#    else
+#        echo "Error during the building of documentation"
+#    fi
 else
     echo "Error in test cases, cannot update"
 fi
