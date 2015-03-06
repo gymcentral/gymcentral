@@ -4,9 +4,9 @@ import json
 from google.appengine.api.datastore_errors import BadValueError
 from google.appengine.ext.ndb.key import Key
 
-from gaebasepy.exceptions import AuthenticationError, BadParameters
 from gaebasepy.gc_models import GCModel, GCModelMtoMNoRep, GCUser
 from gaebasepy.gc_utils import date_to_js_timestamp
+from geabasepy.exceptions import AuthenticationError
 
 
 __author__ = 'fab,stefano.tranquillini'

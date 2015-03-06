@@ -1,6 +1,6 @@
 [submodule "/Users/stefano/Documents/SW/gymcentral/gaebasepy"]
 	path = /Users/stefano/Documents/SW/gymcentral/gaebasepy
 	url = /Users/stefano/Documents/SW/gymcentral/gaebasepy
-[submodule "geabasepy"]
-	path = geabasepy
+[submodule "gaebasepy"]
+	path = gaebasepy
 	url = https://esseti@github.com/esseti/gaebasepy.git
