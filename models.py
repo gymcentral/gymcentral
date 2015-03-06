@@ -89,6 +89,10 @@ class Course(GCModel):
     club = ndb.KeyProperty('Club', required=True)
     is_deleted = ndb.BooleanProperty(default=False)
 
+    @property
+    def active(self):
+        return not self.is_deleted
+
     # levels or profile to be added
 
     def safe_delete(self):
@@ -139,6 +143,10 @@ class CourseTrainers(GCModelMtoMNoRep):
     is_active = ndb.BooleanProperty(default=True)
     creation_date = ndb.DateTimeProperty(auto_now=True)
 
+    @property
+    def active(self):
+        return self.is_active
+
 
 class Observation(GCModel):
     created_by = ndb.KeyProperty(kind='User')
@@ -184,6 +192,10 @@ class ClubMembership(GCModelMtoMNoRep):
     """
 
     @property
+    def active(self):
+        return self.is_active
+
+    @property
     def get_member(self):
         return self.member.get()
 
@@ -216,6 +228,9 @@ class Club(GCModel):
         self.is_open = False
         self.put()
 
+    @property
+    def active(self):
+        return not self.is_deleted
 
     @property
     def all_memberships(self):
@@ -269,6 +284,10 @@ class Session(GCModel):
     on_after = ndb.KeyProperty(kind='Indicator', repeated=True)
     status = ndb.ComputedProperty(lambda self: self._compute_status())
 
+
+    @property
+    def active(self):
+        return not self.canceled
     # @property
     # def get_on_before(self):
     # return ndb.get_multi(self.on_before)

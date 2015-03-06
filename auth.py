@@ -82,8 +82,7 @@ def user_has_role(roles):
                 if not hasattr(req, cfg.MODEL_NAME):
                     raise NotFoundException
                 obj = getattr(req, cfg.MODEL_NAME)
-                obj = obj.key.get()
-                print ("MY DEBUG: %s %s" % (type(obj), isinstance(obj,Club)))
+                print ("MY DEBUG: %s %s %s" % (type(obj) == Club, isinstance(obj, Club), type(obj) is Club))
                 # logger.debug("OBJ " + str(type(obj) is Club))
                 if isinstance(obj, Club):
                     __club_role(req.user, obj, roles)

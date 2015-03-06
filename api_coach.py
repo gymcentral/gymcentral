@@ -1,5 +1,5 @@
 import logging
-
+import logging.config
 from google.appengine.ext import deferred
 from google.appengine.ext.ndb.key import Key
 
@@ -12,7 +12,6 @@ __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 import datetime
 
 from app import app
-from api_trainee import trainee_course_list, trainee_club_details, trainee_club_members
 from api_db_utils import APIDB
 from auth import user_has_role
 from gaebasepy.auth import user_required, GCAuth
@@ -24,8 +23,8 @@ from gaebasepy.http_codes import HttpEmpty, HttpCreated
 
 APP_COACH = "api/coach"
 
-# logging.config.fileConfig('logging.conf')
-logger = logging.getLogger('test_log')
+logging.config.fileConfig('logging.conf')
+logger = logging.getLogger('myConfig')
 
 
 @app.route('/%s/users/current' % APP_COACH, methods=('GET', 'PUT'))
@@ -112,7 +111,9 @@ def coach_club_delete(req, uskey_club):
 
     Delete  a club. |uroleOT|
     """
-    APIDB.delete_club(req.model)
+    print "ciao"
+    club = req.model
+    APIDB.delete_club(club)
     return HttpEmpty()
 
 
@@ -124,7 +125,41 @@ def coach_club_membership(req, uskey_club):
 
     List of the members of a club. |uroleOT|
     """
-    return trainee_club_members(req, uskey_club)
+    club = req.model
+    j_req = json_from_paginated_request(req)
+    page = int(j_req['page'])
+    size = int(j_req['size'])
+    role = req.get('role', None)
+    status = req.get('status', "ACCEPTED")
+    l_users = []
+    if not role:
+        members, total = APIDB.get_club_all_members(club, status=status, paginated=True, page=page, size=size,
+                                                    merge="role")
+    elif role == "MEMBER":
+        members, total = APIDB.get_club_members(club, status=status, paginated=True, page=page, size=size)
+    elif role == "TRAINER":
+        members, total = APIDB.get_club_trainers(club, status=status, paginated=True, page=page, size=size)
+    elif role == "OWNER":
+        members, total = APIDB.get_club_owners(club, status=status, paginated=True, page=page, size=size)
+    # if the query is paginated, and the previous call has already fetched enough people.
+    else:
+        raise BadParameters("Role does not exists %s" % role)
+
+    for member in members:
+        user_role = role
+        if not user_role:
+            # this is not very efficent.. but works
+            user_role = member.role.membership_type
+        if user_role == "MEMBER":
+            res_user = sanitize_json(member, allowed=["nickname", "avatar", "id"])
+        elif user_role == "TRAINER":
+            res_user = sanitize_json(member, allowed=["name", "picture", "id"])
+        elif user_role == "OWNER":
+            res_user = sanitize_json(member, allowed=["name", "picture", "id"])
+        res_user['type'] = user_role
+        l_users.append(res_user)
+
+    return dict(results=l_users, total=total)
 
 
 @app.route('/%s/clubs/<uskey_club>/memberships' % APP_COACH, methods=('POST',))
@@ -181,7 +216,29 @@ def coach_course_list(req, uskey_club):
 
     List of the courses of a club. |uroleOT|
     """
-    return trainee_course_list(req, uskey_club)
+    club = req.model
+    j_req = json_from_paginated_request(req, (('course_type', None),))
+    page = int(j_req['page'])
+    size = int(j_req['size'])
+    course_type = j_req['course_type']
+    courses, total = APIDB.get_club_courses(club, course_type=course_type, paginated=True, page=page, size=size)
+    res_courses = []
+    for course in courses:
+        j_course = course.to_dict()
+        j_course["trainers"] = sanitize_list(APIDB.get_course_trainers(course), allowed=["id", "name", "picture"])
+        j_course["subscriber_count"] = APIDB.get_course_subscribers(course, count_only=True)
+        j_course["session_count"] = APIDB.get_course_sessions(course, count_only=True)
+        allowed = ["id", "name", "description", "trainers", "subscriber_count", "session_count", "course_type"]
+        if course.course_type == "SCHEDULED":
+            allowed += ["start_date", "end_date"]
+        elif course.course_type == "PROGRAM":
+            allowed += ["week_no", "day_no"]
+        res_course = sanitize_json(j_course, allowed=allowed)
+        res_courses.append(res_course)
+    ret = {}
+    ret['results'] = res_courses
+    ret['total'] = total
+    return ret
 
 
 @app.route('/%s/clubs/<uskey_club>/courses' % APP_COACH, methods=('POST',))
@@ -206,7 +263,14 @@ def coach_course_detail(req, uskey_course):
 
     Detail of a course. |uroleOT|
     """
-    return trainee_club_details(req, uskey_course)
+    club = req.model
+    j_club = club.to_dict()
+    j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
+    j_club['courses'] = sanitize_list(APIDB.get_club_courses(club),
+                                      ['id', 'name', 'start_date', 'end_date', 'course_type'])
+    j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['name', 'picture'])
+    return sanitize_json(j_club, ['id', 'name', 'description', 'url', 'creation_date', 'is_open', 'owners',
+                                  'member_count', 'courses'])
 
 
 @app.route('/%s/courses/<uskey_course>' % APP_COACH, methods=('PUT',))

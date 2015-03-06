@@ -9,8 +9,13 @@ import webtest
 from api_db_utils import APIDB
 
 
+
+
+
+
 # don't delete these
-from api_trainee import app as api_trainee
+from api_admin import app as app_admin
+from api_trainee import app as app_trainee
 from api_coach import app
 from gaebasepy.auth import GCAuth
 from gaebasepy.gc_utils import date_to_js_timestamp
@@ -20,6 +25,8 @@ __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 
 class APITestCases(unittest.TestCase):
     def setUp(self):
+        app_trainee
+        app_admin
         logging.config.fileConfig('logging.conf')
         self.logger = logging.getLogger('myLogger')
         # First, create an instance of the Testbed class.
@@ -94,61 +101,40 @@ class APITestCases(unittest.TestCase):
         """
         return self.__has_keys(keys, d_output) and self.__contained(d_input, d_output)
 
-    # def test_app_key(self):
-    #     # check that app_id works correctly
-    #     self.app.get("/api/trainee/users/current", headers=self.auth_headers_coach, status=401)
-    #     self.app.get("/api/coach/users/current", headers=self.auth_headers_trainee, status=401)
+    def test_app_key(self):
+    # check that app_id works correctly
+        self.app.get("/api/trainee/users/current", headers=self.auth_headers_coach, status=401)
+        self.app.get("/api/coach/users/current", headers=self.auth_headers_trainee, status=401)
     #
     # #
     # #
-    # def test_user(self):
-    #     # no auth
-    #     self.app.get('/api/trainee/users/current', status=401)
-    #     # correct data GET
-    #     response = self.app.get('/api/trainee/users/current', headers=self.auth_headers_trainee)
-    #     assert response.json['id'] == self.user.id
-    #     response = self.app.get('/api/coach/users/current', headers=self.auth_headers_coach)
-    #     assert response.json['id'] == self.coach.id
-    #     # Correct Data PUT
-    #     indata = dict(name="edit name")
-    #     response = self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers_trainee)
-    #     self.logger.debug(response.json)
-    #     assert response.json['name'] == "edit name"
-    #     assert response.json['id'] == self.user.id
-    #     response = self.app.put_json('/api/coach/users/current', indata, headers=self.auth_headers_coach)
-    #     self.logger.debug(response.json)
-    #     assert response.json['name'] == "edit name"
-    #     assert response.json['id'] == self.coach.id
-    #     # wrong data PUT
-    #     indata = dict(id=123)
-    #     self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers_trainee, status=400)
-    #     indata = dict(key=123)
-    #     self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers_trainee, status=400)
-    #     indata = dict(thisisnothere=123)
-    #     self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers_trainee, status=400)
+    def test_user(self):
+    # no auth
+        self.app.get('/api/trainee/users/current', status=401)
+        # correct data GET
+        response = self.app.get('/api/trainee/users/current', headers=self.auth_headers_trainee)
+        assert response.json['id'] == self.user.id
+        response = self.app.get('/api/coach/users/current', headers=self.auth_headers_coach)
+        assert response.json['id'] == self.coach.id
+        # Correct Data PUT
+        indata = dict(name="edit name")
+        response = self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers_trainee)
+        self.logger.debug(response.json)
+        assert response.json['name'] == "edit name"
+        assert response.json['id'] == self.user.id
+        response = self.app.put_json('/api/coach/users/current', indata, headers=self.auth_headers_coach)
+        self.logger.debug(response.json)
+        assert response.json['name'] == "edit name"
+        assert response.json['id'] == self.coach.id
+        # wrong data PUT
+        indata = dict(id=123)
+        self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers_trainee, status=400)
+        indata = dict(key=123)
+        self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers_trainee, status=400)
+        indata = dict(thisisnothere=123)
+        self.app.put_json('/api/trainee/users/current', indata, headers=self.auth_headers_trainee, status=400)
 
     def test_club(self):
-        # d_club = dict(name="test", email="test@test.com", description="desc", url="example.com",
-        # training_type=["balance", "stability"], tags=["test", "trento"])
-        # club = APIDB.create_club(**d_club)
-        # assert type(club) == Club
-        # APIDB.update_club(club, **d_club)
-        # assert type(club) == Club
-        #
-        # club_response = ['id', 'name', 'description', 'url', 'isOpen', 'creationDate', 'owners', 'memberCount',
-        # 'courseCount']
-        # d_input = dict(name="club name", description="description club", url="http://gymcentral.net", isOpen=True,
-        #                tags=['test', 'tag'])
-        # d_output = self.app.post_json('/api/coach/clubs', d_input, headers=self.auth_headers_coach).json
-        # assert self._correct_response(club_response, d_input, d_output)
-        #
-        # id_club = d_output['id']
-        # d_input = dict(name="club name 2", description="description club 2",
-        #                tags=['test', 'tag'])
-        # d_output = self.app.put_json('/api/coach/clubs/%s' % id_club, d_input, headers=self.auth_headers_coach).json
-        # assert self._correct_response(club_response, d_input, d_output)
-
-
         club_response = ['id', 'name', 'description', 'url', 'isOpen', 'creationDate', 'owners', 'memberCount',
                          'courseCount']
         d_input = dict(name="club name", description="description club", url="http://gymcentral.net", isOpen=True,
@@ -159,33 +145,29 @@ class APITestCases(unittest.TestCase):
         d_output = self.app.post_json('/api/coach/clubs', d_input, headers=self.auth_headers_coach).json
         assert self._correct_response(club_response, d_input, d_output)
         id_club = d_output['id']
-        self.logger.debug("test")
-        # # list, for trainee
-        d_output = self.app.get('/api/trainee/clubs', headers=self.auth_headers_trainee).json
-        assert d_output['total'] == 1
-        d_output = self.app.post_json('/api/coach/clubs', d_input, headers=self.auth_headers_coach).json
+
+        # update
+        d_input = dict(name="club name 2")
+        d_output = self.app.put_json('/api/coach/clubs/%s' % id_club, d_input, headers=self.auth_headers_coach).json
         assert self._correct_response(club_response, d_input, d_output)
-        d_output = self.app.get('/api/trainee/clubs', headers=self.auth_headers_trainee).json
-        assert d_output['total'] == 2
 
-        #update
 
-        # another coach (owner) cannot update it
-        # self.app.put_json('/api/coach/clubs/%s' % id_club, d_input, status=401, headers=self.auth_headers_owner_dummy)
+        # # another coach (owner) cannot update it
+        self.app.put_json('/api/coach/clubs/%s' % id_club, d_input, status=401, headers=self.auth_headers_owner_dummy)
         # add the dummy as coach
-        # self.app.post_json('/api/coach/clubs/%s/memberships' % id_club,
-        #                    dict(userId=self.dummy.id, membershipType="OWNER",
-        #                         endData=date_to_js_timestamp(datetime.now())), headers=self.auth_headers_coach)
-        # now he can edit
-        # d_input = dict(name="club name dummy")
-        # d_output = self.app.put_json('/api/coach/clubs/%s' % id_club, d_input,
-        #                              headers=self.auth_headers_owner_dummy).json
-        # assert self._correct_response(club_response, d_input, d_output)
-        #
-        # # delete a club
+        self.app.post_json('/api/coach/clubs/%s/memberships' % id_club,
+                           dict(userId=self.dummy.id, membershipType="OWNER",
+                                endData=date_to_js_timestamp(datetime.now())), headers=self.auth_headers_coach)
+        d_input = dict(name="club name dummy")
+        d_output = self.app.put_json('/api/coach/clubs/%s' % id_club, d_input,
+                                     headers=self.auth_headers_owner_dummy).json
+        assert self._correct_response(club_response, d_input, d_output)
+        # delete a club
         self.app.delete('/api/coach/clubs/%s' % id_club, headers=self.auth_headers_coach)
-        #
-        # d_output = self.app.get('/api/trainee/clubs', headers=self.auth_headers_trainee).json
-        # assert d_output['total'] == 0
+        # now this gives error
+        self.app.put_json('/api/coach/clubs/%s' % id_club, d_input, status=404, headers=self.auth_headers_coach)
+        # and list is 0: NOTE: if u put this check before it breaks nosetest. dunno why
+        d_output = self.app.get('/api/trainee/clubs', headers=self.auth_headers_trainee).json
+        assert d_output['total'] == 0
         #
         # if becomes a coach then he can.

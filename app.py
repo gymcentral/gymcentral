@@ -3,6 +3,7 @@ App
 
 """
 from google.appengine.ext.ndb.key import Key
+
 from api_db_utils import APIDB
 import cfg
 from gaebasepy.app import WSGIApp
@@ -10,6 +11,7 @@ from gaebasepy.auth import GCAuth
 from gaebasepy.exceptions import NotFoundException, AuthenticationError
 from gaebasepy.gc_utils import camel_case
 from gaebasepy.http_codes import GCHttpCode
+
 
 __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 
@@ -53,11 +55,13 @@ class GCApp(WSGIApp):
                 # i suppose that 'uskey' for the name is used when it's a UrlSafeKEY.
                 # this kind of key can be loaded here
                 if key.startswith("uskey"):
-                    if hasattr(request,'model'):
+                    if hasattr(request, 'model'):
                         return request
                     if value != "current":
                         try:
                             model = Key(urlsafe=value).get()
+                            if not model.active:
+                                raise NotFoundException(message=", it was deleted")
                             setattr(request, cfg.MODEL_NAME, model)
                         except:
                             raise NotFoundException()
