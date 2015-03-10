@@ -183,7 +183,7 @@ class APITestCases(unittest.TestCase):
         assert self._correct_response(club_response, d_input, d_output)
         id_club = d_output['id']
 
-        
+        # update
         d_input = dict(name="club name new")
         d_output = self.app.put_json('/api/coach/clubs/%s'%id_club, d_input, headers=self.auth_headers_coach).json
         assert self._correct_response(club_response, d_input, d_output)
