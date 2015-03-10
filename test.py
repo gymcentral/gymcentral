@@ -169,5 +169,49 @@ class APITestCases(unittest.TestCase):
         # and list is 0: NOTE: if u put this check before it breaks nosetest. dunno why
         d_output = self.app.get('/api/trainee/clubs', headers=self.auth_headers_trainee).json
         assert d_output['total'] == 0
-        #
-        # if becomes a coach then he can.
+
+    def test_that_works(self):
+        club_response = ['id', 'name', 'description', 'url', 'isOpen', 'creationDate', 'owners', 'memberCount',
+                         'courseCount']
+        d_input = dict(name="club name", description="description club", url="http://gymcentral.net", isOpen=True,
+                       tags=['test', 'tag'])
+        # # missing pars, 400 correct
+        self.app.post('/api/coach/clubs', status=400, headers=self.auth_headers_coach)
+
+        # # correct
+        d_output = self.app.post_json('/api/coach/clubs', d_input, headers=self.auth_headers_coach).json
+        assert self._correct_response(club_response, d_input, d_output)
+        id_club = d_output['id']
+
+        
+        d_input = dict(name="club name new")
+        d_output = self.app.put_json('/api/coach/clubs/%s'%id_club, d_input, headers=self.auth_headers_coach).json
+        assert self._correct_response(club_response, d_input, d_output)
+
+        self.app.delete('/api/coach/clubs/%s' % id_club, headers=self.auth_headers_coach)
+
+        d_output = self.app.get('/api/trainee/clubs', headers=self.auth_headers_trainee).json
+        assert d_output['total'] == 0
+        
+    def test_that_fails(self):
+        club_response = ['id', 'name', 'description', 'url', 'isOpen', 'creationDate', 'owners', 'memberCount',
+                         'courseCount']
+        d_input = dict(name="club name", description="description club", url="http://gymcentral.net", isOpen=True,
+                       tags=['test', 'tag'])
+        # # create error, 400 is ok
+        self.app.post('/api/coach/clubs', status=400, headers=self.auth_headers_coach)
+        # # correct
+        d_output = self.app.post_json('/api/coach/clubs', d_input, headers=self.auth_headers_coach).json
+        assert self._correct_response(club_response, d_input, d_output)
+        id_club = d_output['id']
+        # # list, for trainee
+        d_output = self.app.get('/api/trainee/clubs', headers=self.auth_headers_trainee).json
+        assert d_output['total'] == 1
+        #  create a new one
+        d_output = self.app.post_json('/api/coach/clubs', d_input, headers=self.auth_headers_coach).json
+        assert self._correct_response(club_response, d_input, d_output)
+        # list 
+        d_output = self.app.get('/api/trainee/clubs', headers=self.auth_headers_trainee).json
+        assert d_output['total'] == 2
+        # delete
+        self.app.delete('/api/coach/clubs/%s' % id_club, headers=self.auth_headers_coach)

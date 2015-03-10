@@ -1,4 +1,3 @@
 NoseGAE
 coverage
-git+git://github.com/esseti/gae-base-py.git
 WebTest
