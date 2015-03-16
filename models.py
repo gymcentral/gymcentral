@@ -5,7 +5,7 @@ from google.appengine.api.datastore_errors import BadValueError
 from google.appengine.ext.ndb.key import Key
 
 from gaebasepy.gc_models import GCModel, GCModelMtoMNoRep, GCUser
-from gaebasepy.gc_utils import date_to_js_timestamp
+from gaebasepy.gc_utils import date_to_js_timestamp, date_from_js_timestamp
 from gaebasepy.exceptions import AuthenticationError, BadParameters
 
 
@@ -133,6 +133,14 @@ class Course(GCModel):
             if not self.duration:
                 return False, "Entity has uninitialized properties: duration"
         return True
+
+    def populate(self, **kwds):
+        # convert date to python date
+        if 'start_date' in kwds:
+            kwds['start_date'] = date_from_js_timestamp(kwds['start_date'])
+        if 'end_date' in kwds:
+            kwds['end_date'] = date_from_js_timestamp(kwds['end_date'])
+        super(Course, self).populate(**kwds)
 
 
 class CourseTrainers(GCModelMtoMNoRep):
@@ -288,6 +296,7 @@ class Session(GCModel):
     @property
     def active(self):
         return not self.canceled
+
     # @property
     # def get_on_before(self):
     # return ndb.get_multi(self.on_before)

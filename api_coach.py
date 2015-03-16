@@ -1,5 +1,6 @@
 import logging
 import logging.config
+
 from google.appengine.ext import deferred
 from google.appengine.ext.ndb.key import Key
 
@@ -23,8 +24,8 @@ from gaebasepy.http_codes import HttpEmpty, HttpCreated
 
 APP_COACH = "api/coach"
 
-logging.config.fileConfig('logging.conf')
-logger = logging.getLogger('myConfig')
+# logging.config.fileConfig('logging.conf')
+logger = logging.getLogger(__name__)
 
 
 @app.route('/%s/users/current' % APP_COACH, methods=('GET', 'PUT'))
@@ -217,11 +218,13 @@ def coach_course_list(req, uskey_club):
     List of the courses of a club. |uroleOT|
     """
     club = req.model
-    j_req = json_from_paginated_request(req, (('course_type', None),))
+    j_req = json_from_paginated_request(req, (('course_type', None), ('active_only', "True"),))
     page = int(j_req['page'])
     size = int(j_req['size'])
     course_type = j_req['course_type']
-    courses, total = APIDB.get_club_courses(club, course_type=course_type, paginated=True, page=page, size=size)
+    active_only = j_req['active_only'] == "True"
+    courses, total = APIDB.get_club_courses(club, course_type=course_type, active_only=active_only,
+                                            paginated=True, page=page, size=size)
     res_courses = []
     for course in courses:
         j_course = course.to_dict()
@@ -232,7 +235,7 @@ def coach_course_list(req, uskey_club):
         if course.course_type == "SCHEDULED":
             allowed += ["start_date", "end_date"]
         elif course.course_type == "PROGRAM":
-            allowed += ["week_no", "day_no"]
+            allowed += ["duration"]
         res_course = sanitize_json(j_course, allowed=allowed)
         res_courses.append(res_course)
     ret = {}
@@ -242,6 +245,7 @@ def coach_course_list(req, uskey_club):
 
 
 @app.route('/%s/clubs/<uskey_club>/courses' % APP_COACH, methods=('POST',))
+@user_has_role(["TRAINER", "OWNER"])
 def coach_course_create(req, uskey_club):
     """
     ``POST`` @ |ca| +  ``/clubs/<uskey_club>/courses``
@@ -250,9 +254,10 @@ def coach_course_create(req, uskey_club):
     """
     j_req = json_from_request(req, mandatory_props=["name", "description", "courseType"],
                               optional_props=["startDate", "endDate", "duration"])
-    course = APIDB.create_course(req.model, j_req)
+    course = APIDB.create_course(req.model, **j_req)
     APIDB.add_trainer_to_course(req.user, course)
-    return HttpCreated(coach_course_detail(dict(model=course), None))
+    req.model = course
+    return coach_course_detail(req, uskey_club)
 
 
 @app.route('/%s/courses/<uskey_course>' % APP_COACH, methods=('GET',))
@@ -263,14 +268,14 @@ def coach_course_detail(req, uskey_course):
 
     Detail of a course. |uroleOT|
     """
-    club = req.model
-    j_club = club.to_dict()
-    j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
-    j_club['courses'] = sanitize_list(APIDB.get_club_courses(club),
-                                      ['id', 'name', 'start_date', 'end_date', 'course_type'])
-    j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['name', 'picture'])
-    return sanitize_json(j_club, ['id', 'name', 'description', 'url', 'creation_date', 'is_open', 'owners',
-                                  'member_count', 'courses'])
+    course = req.model
+    j_course = course.to_dict()
+    j_course['trainers'] = sanitize_list(APIDB.get_course_trainers(course), allowed=['id', 'name', 'picture'])
+    j_course['subscriber_count'] = APIDB.get_course_subscribers(course, count_only=True)
+    j_course['session_count'] = APIDB.get_course_sessions(course, count_only=True)
+    return sanitize_json(j_course, ['id', 'name', 'description', 'start_date', 'end_date', 'duration',
+                                    'trainers', 'course_type', 'subscriber_count', 'session_count'],
+                         except_on_missing=False)
 
 
 @app.route('/%s/courses/<uskey_course>' % APP_COACH, methods=('PUT',))
@@ -283,8 +288,9 @@ def coach_course_update(req, uskey_course):
     """
     j_req = json_from_request(req,
                               optional_props=["name", "description", "courseType", "startDate", "endDate", "duration"])
-    course = APIDB.update_course(req.model, j_req)
-    return coach_course_detail(dict(model=course), None)
+    course = APIDB.update_course(req.model, **j_req)
+    req.model = course
+    return coach_course_detail(req, uskey_course)
 
 
 @app.route('/%s/courses/<uskey_course>' % APP_COACH, methods=('DELETE',))

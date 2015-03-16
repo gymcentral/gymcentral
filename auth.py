@@ -1,24 +1,27 @@
 import logging
 import logging.config
+
 import cfg
 from gaebasepy.auth import GCAuth
 from gaebasepy.exceptions import AuthenticationError, NotFoundException
 from models import Club, ClubMembership, CourseSubscription, CourseTrainers, Course, Session, Exercise, Indicator, \
     Detail
 
+
 # this beacuse the decorator is needed to create the docs but not to run the project
 # http://stackoverflow.com/questions/3687046/python-sphinx-autodoc-and-decorated-members
 # try:
 # from decorator import decorator
 # except ImportError:
-#     # No decorator package available. Create a no-op "decorator".
+# # No decorator package available. Create a no-op "decorator".
 #     def decorator(f):
 #         return f
 
 __author__ = 'stefano'
 
-logging.config.fileConfig('logging.conf')
-logger = logging.getLogger('myLogger')
+# logging.config.fileConfig('logging.conf')
+logger = logging.getLogger('__name__')
+
 
 def __club_role(user, club, roles):
     rel = ClubMembership.get_by_id(user, club)
@@ -40,19 +43,20 @@ def __course_role(user, course, roles):
         if not rel.is_active:
             raise AuthenticationError("user is not ACTIVE member of the course")
         test_passed = True
-    if "TRAINER" in roles:
+    elif "TRAINER" in roles:
         rel = CourseTrainers.get_by_id(user, course)
         if rel is None:
             raise AuthenticationError("user is not trainer of the course")
         if not rel.is_active:
             raise AuthenticationError("user is not ACTIVE trainer of the course")
         test_passed = True
-    if "OWNER" in roles:
+    elif "OWNER" in roles:
         # in case this rises and exception.
         __club_role(user, course.club, ['OWNER'])
         test_passed = True
-    if not test_passed:
+    else:
         raise AuthenticationError("Role (%s) is not permitted for course" % roles)
+
 
 
 def __club_membership_role(user, club, roles):
@@ -82,7 +86,6 @@ def user_has_role(roles):
                 if not hasattr(req, cfg.MODEL_NAME):
                     raise NotFoundException
                 obj = getattr(req, cfg.MODEL_NAME)
-                print ("MY DEBUG: %s %s %s" % (type(obj) == Club, isinstance(obj, Club), type(obj) is Club))
                 # logger.debug("OBJ " + str(type(obj) is Club))
                 if isinstance(obj, Club):
                     __club_role(req.user, obj, roles)

@@ -1,6 +1,7 @@
 """
 This file contains the class that abstract the ndb database and provides functions to access it.
 """
+from gaebasepy.gc_utils import date_from_js_timestamp
 from models import Club
 
 __author__ = 'stefano tranquillini'
@@ -377,6 +378,8 @@ class APIDB():
         :param end_date: when it expires (default = ``None``)
         :return: the membership object
         """
+        if end_date and end_date.isNondigit():
+            end_date=date_from_js_timestamp(end_date)
         return cls.model_club_user(id=cls.model_club_user.build_id(user.key, club.key),
                                    member=user.key, club=club.key, is_active=True, membership_type="OWNER",
                                    status="ACCEPTED", end_date=end_date).put()
@@ -630,7 +633,7 @@ class APIDB():
         :param kwargs: usual kwargs
         :return: list of sessions
         """
-        sessions = cls.get_sessions().filter(cls.model_session.course == course.key)
+        sessions = cls.get_sessions(query_only=True).filter(cls.model_session.course == course.key)
         if date_from:
             sessions = sessions.filter(cls.model_session.start_date >= date_from)
         if date_to:
@@ -651,7 +654,7 @@ class APIDB():
         :param kwargs: usual kwargs
         :return: the list of curses
         """
-        all_courses = cls.__get(cls.model_course_trainers.query(cls.model_course_trainers.member == user))
+        all_courses = cls.__get(cls.model_course_trainers.query(cls.model_course_trainers.member == user.key))
         courses = [course for course in all_courses if course.club == club.key and not course.is_deleted]
         return cls.__get(courses, **kwargs)
 

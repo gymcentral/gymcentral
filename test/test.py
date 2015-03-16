@@ -13,12 +13,24 @@ from api_db_utils import APIDB
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 # don't delete these
 from api_admin import app as app_admin
 from api_trainee import app as app_trainee
 from api_coach import app
 from gaebasepy.auth import GCAuth
-from gaebasepy.gc_utils import date_to_js_timestamp
+from gaebasepy.gc_utils import date_to_js_timestamp, date_from_js_timestamp
 
 __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 
@@ -27,8 +39,8 @@ class APITestCases(unittest.TestCase):
     def setUp(self):
         app_trainee
         app_admin
-        logging.config.fileConfig('logging.conf')
-        self.logger = logging.getLogger('myLogger')
+        # logging.config.fileConfig('../logging.conf')
+        self.logger = logging.getLogger(__name__)
         # First, create an instance of the Testbed class.
         self.testbed = testbed.Testbed()
         # Then activate the testbed, which prepares the service stubs for use.
@@ -68,7 +80,7 @@ class APITestCases(unittest.TestCase):
                                    'X-App-Id': 'coach-test'}
 
         # he can be both
-        self.auth_headers_owner_dummy = {'Authorization': str('Token %s' % GCAuth.auth_user_token(self.dummy)),
+        self.auth_headers_coach_dummy = {'Authorization': str('Token %s' % GCAuth.auth_user_token(self.dummy)),
                                          'X-App-Id': 'coach-test'}
         self.auth_headers_trainee_dummy = {'Authorization': str('Token %s' % GCAuth.auth_user_token(self.dummy)),
                                            'X-App-Id': 'trainee-test'}
@@ -78,6 +90,9 @@ class APITestCases(unittest.TestCase):
         self.testbed.deactivate()
 
     def __contained(self, d1, d2):
+        """
+        checks if d1 is contained in d2
+        """
         for key, value in d1.iteritems():
             if not key in d2:
                 # self.logger.debug("Key missing  %s: %s %s" % (key, d1, d2))
@@ -85,10 +100,20 @@ class APITestCases(unittest.TestCase):
             v2 = d2[key]
             if not v2 == value:
                 # self.logger.debug("Value error %s: %s %s" % (key, v2, value))
-                raise Exception("Value error %s: %s %s" % (key, v2, value))
+                # maybe it's date:
+                try:
+                    date1 = date_from_js_timestamp(v2)
+                    date2 = date_from_js_timestamp(value)
+                    if date1 != date2:
+                        raise Exception("Value error %s: %s %s" % (key, date1, date2))
+                except:
+                    raise Exception("Value error %s: %s %s" % (key, v2, value))
         return True
 
     def __has_keys(self, keys, d):
+        """
+        checks if the dictionary has the keys
+        """
         for key in keys:
             if not key in d:
                 # self.logger.debug("Key missing  %s: %s" % (key, d))
@@ -101,15 +126,22 @@ class APITestCases(unittest.TestCase):
         """
         return self.__has_keys(keys, d_output) and self.__contained(d_input, d_output)
 
+    def _create_club(self):
+        # create a club
+        d_input = dict(name="club name", description="description club", url="http://gymcentral.net", isOpen=True,
+                       tags=['test', 'tag'])
+        d_output = self.app.post_json('/api/coach/clubs', d_input, headers=self.auth_headers_coach).json
+        id_club = d_output['id']
+        return id_club
+
     def test_app_key(self):
-    # check that app_id works correctly
+        # check that app_id works correctly
         self.app.get("/api/trainee/users/current", headers=self.auth_headers_coach, status=401)
         self.app.get("/api/coach/users/current", headers=self.auth_headers_trainee, status=401)
-    #
-    # #
-    # #
+
+
     def test_user(self):
-    # no auth
+        # no auth
         self.app.get('/api/trainee/users/current', status=401)
         # correct data GET
         response = self.app.get('/api/trainee/users/current', headers=self.auth_headers_trainee)
@@ -145,6 +177,10 @@ class APITestCases(unittest.TestCase):
         d_output = self.app.post_json('/api/coach/clubs', d_input, headers=self.auth_headers_coach).json
         assert self._correct_response(club_response, d_input, d_output)
         id_club = d_output['id']
+        # there is one club
+        d_output = self.app.get('/api/trainee/clubs', headers=self.auth_headers_trainee).json
+        assert d_output['total'] == 1
+        assert self._correct_response(club_response, d_input, d_output['results'][0])
 
         # update
         d_input = dict(name="club name 2")
@@ -153,21 +189,86 @@ class APITestCases(unittest.TestCase):
 
 
         # # another coach (owner) cannot update it
-        self.app.put_json('/api/coach/clubs/%s' % id_club, d_input, status=401, headers=self.auth_headers_owner_dummy)
+        self.app.put_json('/api/coach/clubs/%s' % id_club, d_input, status=401, headers=self.auth_headers_coach_dummy)
         # add the dummy as coach
         self.app.post_json('/api/coach/clubs/%s/memberships' % id_club,
                            dict(userId=self.dummy.id, membershipType="OWNER",
                                 endData=date_to_js_timestamp(datetime.now())), headers=self.auth_headers_coach)
         d_input = dict(name="club name dummy")
         d_output = self.app.put_json('/api/coach/clubs/%s' % id_club, d_input,
-                                     headers=self.auth_headers_owner_dummy).json
+                                     headers=self.auth_headers_coach_dummy).json
         assert self._correct_response(club_response, d_input, d_output)
         # delete a club
         self.app.delete('/api/coach/clubs/%s' % id_club, headers=self.auth_headers_coach)
         # now this gives error
         self.app.put_json('/api/coach/clubs/%s' % id_club, d_input, status=404, headers=self.auth_headers_coach)
-        # and list is 0: NOTE: if u put this check before it breaks nosetest. dunno why
         d_output = self.app.get('/api/trainee/clubs', headers=self.auth_headers_trainee).json
         assert d_output['total'] == 0
-        #
-        # if becomes a coach then he can.
+
+    def test_membership(self):
+        id_club = self._create_club()
+        # add another trainer, this fails
+        self.app.post_json('/api/coach/clubs/%s/memberships' % id_club,
+                           dict(userId=self.user.id, membershipType="MEMBER",
+                                endData=date_to_js_timestamp(datetime.now())), status=401,
+                           headers=self.auth_headers_coach_dummy)
+        # add another trainer
+        d_output = self.app.post_json('/api/coach/clubs/%s/memberships' % id_club,
+                                      dict(userId=self.dummy.id, membershipType="TRAINER",
+                                           endData=date_to_js_timestamp(datetime.now())),
+                                      headers=self.auth_headers_coach).json
+        dummy_membership_id = d_output['id']
+        # a member, by the dummy trainer just added
+        self.app.post_json('/api/coach/clubs/%s/memberships' % id_club,
+                           dict(userId=self.user.id, membershipType="MEMBER",
+                                endData=date_to_js_timestamp(datetime.now())), headers=self.auth_headers_coach_dummy)
+        # an owner
+        self.app.post_json('/api/coach/clubs/%s/memberships' % id_club,
+                           dict(userId=self.owner.id, membershipType="OWNER",
+                                endData=date_to_js_timestamp(datetime.now())), headers=self.auth_headers_coach)
+
+        d_output = self.app.get('/api/coach/clubs/%s/memberships' % id_club, headers=self.auth_headers_coach).json
+        # these 3 plus the creator
+        assert d_output['total'] == 4
+        d_output = self.app.get('/api/coach/clubs/%s/memberships?role=OWNER' % id_club,
+                                headers=self.auth_headers_coach).json
+        assert d_output['total'] == 2
+        d_output = self.app.get('/api/coach/clubs/%s/memberships?role=TRAINER' % id_club,
+                                headers=self.auth_headers_coach).json
+        assert d_output['total'] == 1
+
+
+    def test_courses(self):
+        id_club = self._create_club()
+        # gneral responses
+        course_response_scheduled = ['id', 'name', 'description', 'startDate', 'endDate', 'trainers', 'subscriberCount',
+                                     'sessionCount', 'courseType']
+        course_response_program = ['id', 'name', 'description', 'duration', 'trainers', 'subscriberCount',
+                                   'sessionCount', 'courseType']
+        # create a course
+        d_input = dict(name="name course", description="description course",
+                       startDate=date_to_js_timestamp(datetime.now()), endDate=date_to_js_timestamp(datetime.now()),
+                       courseType="SCHEDULED")
+        d_output = self.app.post_json('/api/coach/clubs/%s/courses' % id_club, d_input,
+                                      headers=self.auth_headers_coach).json
+        assert self._correct_response(course_response_scheduled, d_input, d_output)
+        id_course = d_output['id']
+        # get list
+        d_output = self.app.get('/api/coach/clubs/%s/courses' % id_club, dict(active_only=False),
+                                headers=self.auth_headers_coach).json
+        assert d_output['total'] == 1
+        # update it
+        d_input = dict(name="updated course", duration=10, courseType="PROGRAM")
+        d_output = self.app.put_json('/api/coach/courses/%s' % id_course, d_input, headers=self.auth_headers_coach).json
+        assert self._correct_response(course_response_program, d_input, d_output)
+        d_output = self.app.get('/api/coach/courses/%s' % id_course, d_input, headers=self.auth_headers_coach).json
+        assert self._correct_response(course_response_program, d_input, d_output)
+        # delete it
+        self.app.delete('/api/coach/courses/%s' % id_course, headers=self.auth_headers_coach)
+        # check that it does not exists
+        self.app.get('/api/coach/courses/%s' % id_course, dict(active_only=False), status=404,
+                                headers=self.auth_headers_coach)
+        d_output = self.app.get('/api/coach/clubs/%s/courses' % id_club, d_input, headers=self.auth_headers_coach).json
+        # check that list is empty
+        assert d_output['total'] == 0
+
