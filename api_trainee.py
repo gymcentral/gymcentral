@@ -1,6 +1,9 @@
 import json
-import logging
+
 from google.appengine.ext.deferred import deferred
+
+from gaebasepy.http_codes import HttpCreated
+
 from tasks import sync_user
 
 
@@ -16,8 +19,7 @@ from auth import user_has_role
 from gaebasepy.auth import GCAuth, user_required
 from gaebasepy.exceptions import AuthenticationError, BadParameters, NotFoundException, BadRequest
 from gaebasepy.gc_utils import sanitize_json, sanitize_list, json_from_paginated_request, \
-    json_from_request, date_to_js_timestamp
-import logging.config
+    json_from_request
 
 # ---------------------------------- TRAINEE ---------------------------------------
 
@@ -34,7 +36,7 @@ def __get_current_club(user):
     return APIDB.get_club_by_id(user.active_club)
 
 
-@app.route("%s/version/<mode>/current" % APP_TRAINEE, methods=('GET', 'PUT'))
+@app.route("/%s/version/<mode>/current" % APP_TRAINEE, methods=('GET', 'PUT'))
 def version(req, mode):
     """
     Gets or set the version for the current ``mode``
@@ -43,7 +45,7 @@ def version(req, mode):
     :param mode: the mode
     :return: an object with current version (``currentVersion``)
     """
-    v = Version.query(Version.type == mode).fetch(1)
+    v = Version.query(Version.type == mode).get()
     if req.method == 'GET':
         if not v:
             raise NotFoundException
@@ -52,12 +54,13 @@ def version(req, mode):
         if not v:
             v = Version()
             v.type = mode
-        v.current == req.get('currentVersion')
+        vset = str(json.loads(req.body)['currentVersion'])
+        v.current = vset
         v.put()
         return 200, dict(currentVersion=v.current)
 
 
-@app.route("%s/logs" % APP_TRAINEE, methods=('POST',))
+@app.route("/%s/logs" % APP_TRAINEE, methods=('POST', 'GET'))
 def logs(req):
     """
     Cretates an entity in the log
@@ -65,14 +68,18 @@ def logs(req):
     :param req:
     :return: 201, and the log object
     """
-    try:
-        j_req = json.loads(req.body)
-    except (TypeError, ValueError) as e:
-        raise BadRequest("Invalid JSON")
-    log = Log()
-    log.data = j_req
-    log.put()
-    return 201, log.data
+    if req.method == 'GET':
+        logs = Log.query().fetch(1)
+        return logs[0]
+    else:
+        try:
+            j_req = json.loads(req.body)
+        except (TypeError, ValueError) as e:
+            raise BadRequest("Invalid JSON")
+        log = Log()
+        log.data = j_req
+        log.put()
+        return 201, log.data
 
 
 @app.route('/%s/users/current' % APP_TRAINEE, methods=('GET', 'PUT'))
@@ -91,7 +98,10 @@ def trainee_profile(req):
     if req.method == "GET":
         return sanitize_json(req.user, out)
     elif req.method == "PUT":
-        j_req = json_from_request(req, accept_all=True)
+        j_req = json_from_request(req,
+                                  optional_props=['name', 'nickname', 'gender', 'picture', 'avatar', 'birthday',
+                                                  'country', 'city', 'language',
+                                                  'email', 'phone', 'activeClub'])
         update, user = APIDB.update_user(req.user, **j_req)
         s_token = GCAuth.auth_user_token(user)
         deferred.defer(sync_user, user, s_token)
@@ -176,6 +186,10 @@ def trainee_club_members(req, uskey_club):
     List of the members of a club
     """
     club = req.model
+    if uskey_club == "current":
+        user = GCAuth.get_user(req)
+        if APIDB.get_user_club_role(user, club) != "MEMBER":
+            raise AuthenticationError("User is not subscribed to the course")
     j_req = json_from_paginated_request(req)
     page = int(j_req['page'])
     size = int(j_req['size'])
@@ -220,11 +234,19 @@ def trainee_course_list(req, uskey_club):
     List of the courses of a club
     """
     club = req.model
-    j_req = json_from_paginated_request(req, (('course_type', None),))
+    j_req = json_from_paginated_request(req, (('course_type', None), 'activeOnly', ('subscribed', False)))
     page = int(j_req['page'])
     size = int(j_req['size'])
     course_type = j_req['course_type']
-    courses, total = APIDB.get_club_courses(club, course_type=course_type, paginated=True, page=page, size=size)
+    active_only = j_req['activeOnly'] == "True"
+    subscribed = j_req['subscribed'] == "True"
+
+    if subscribed:
+        courses, total = APIDB.get_club_courses_im_subscribed_to(club, course_type=course_type, active_only=active_only,
+                                                                 paginated=True, page=page, size=size)
+    else:
+        courses, total = APIDB.get_club_courses(club, course_type=course_type, active_only=active_only,
+                                                paginated=True, page=page, size=size)
     res_courses = []
     for course in courses:
         j_course = course.to_dict()
@@ -294,15 +316,19 @@ def trainee_course_session_list(req, uskey_course):
     # TODO: test
     course = req.model
     j_req = json_from_paginated_request(req, (('status', 'UPCOMING'), ('type', None),
-                                              ('from', date_to_js_timestamp(datetime.datetime.now())),
-                                              ('to', date_to_js_timestamp(datetime.datetime.now()))))
+                                              ('from', None),
+                                              ('to', None)))
+
     page = int(j_req['page'])
     size = int(j_req['size'])
     try:
         date_from = datetime.datetime.fromtimestamp(long(j_req['from']) / 1000)
+    except Exception as e:
+        date_from = None
+    try:
         date_to = datetime.datetime.fromtimestamp(long(j_req['to']) / 1000)
     except Exception as e:
-        raise BadParameters("Problems with the data format %s" % e.message)
+        date_to = None
     session_type = j_req['type']
 
     sessions, total = APIDB.get_course_sessions(course, date_from=date_from, date_to=date_to, session_type=session_type,
@@ -311,13 +337,15 @@ def trainee_course_session_list(req, uskey_course):
     for session in sessions:
         res_obj = session.to_dict()
         res_obj['status'] = session.status
-        # res_obj['participated'] = APIDB.user_participated_in_session(req.user, session)
+        res_obj['participated'] = APIDB.user_participated_in_session(req.user, session)
         res_obj['participation_count'] = APIDB.user_participation_details(req.user, session, count_only=True)
         # res_obj['actnoivity_count'] = session.activity_count
         res_obj['max_score'] = APIDB.session_completeness(req.user, session)
-        allowed = ['id', 'name', 'status', 'url', 'participation_count',
+        allowed = ['id', 'name', 'status', 'participation_count',
                    'session_type']
         course_type = session.course.get().course_type
+        if session.session_type == "SINGLE":
+            allowed += ['url']
         if course_type == "SCHEDULED":
             allowed += ["start_date", "end_date"]
         elif course_type == "PROGRAM":
@@ -338,30 +366,35 @@ def trainee_club_session_list(req, uskey_club):
     # TODO: test
     club = req.model
     j_req = json_from_paginated_request(req, (('type', None),
-                                              ('from', date_to_js_timestamp(datetime.datetime.now())),
-                                              ('to', date_to_js_timestamp(datetime.datetime.now()))))
+                                              ('from', None),
+                                              ('to', None)))
     page = int(j_req['page'])
     size = int(j_req['size'])
     try:
         date_from = datetime.datetime.fromtimestamp(long(j_req['from']) / 1000)
+    except Exception as e:
+        date_from = None
+    try:
         date_to = datetime.datetime.fromtimestamp(long(j_req['to']) / 1000)
     except Exception as e:
-        raise BadParameters("Problems with the data format %s" % e.message)
+        date_to = None
     session_type = j_req['type']
     sessions, total = APIDB.get_sessions_im_subscribed(req.user, club, date_from, date_to, session_type, paginated=True,
-                                                      page=page, size=size)
+                                                       page=page, size=size)
 
     res_list = []
     for session in sessions:
         res_obj = session.to_dict()
         res_obj['status'] = session.status
+        res_obj['participated'] = APIDB.user_participated_in_session(req.user, session)
         res_obj['participation_count'] = APIDB.user_participation_details(req.user, session, count_only=True)
         res_obj['max_score'] = APIDB.session_completeness(req.user, session)
         course = session.course.get()
         res_obj['course_id'] = course.id
         res_obj['course_name'] = course.name
         # no edist here, since the data on the type are already removed
-        res_list.append(sanitize_json(res_obj, hidden=['course', 'list_exercises']))
+        res_list.append(sanitize_json(res_obj, hidden=['course', 'list_exercises', 'profile', 'activities', 'on_before',
+                                                       'on_after', 'meta_data']))
     return dict(total=total, results=res_list)
 
     # Training session
@@ -404,7 +437,7 @@ def trainee_session_detail(req, uskey_session):
                                             allowed=['id', 'name', 'description', 'level', 'source', 'details',
                                                      'indicators'])
     # there should be 'type',
-    allowed = ['id', 'name', 'sxtatus', 'participation_count',
+    allowed = ['id', 'name', 'status', 'participation_count',
                'activities', 'session_type', 'max_score', 'on_before', 'on_after']
     course_type = session.course.get().course_type
     if course_type == "SCHEDULED":
@@ -418,7 +451,7 @@ def trainee_session_detail(req, uskey_session):
     # Training session
 
 
-@app.route('/%s/sessions/<uskey_session>/performances', methods=("POST",))
+@app.route('/%s/sessions/<uskey_session>/performances' % APP_TRAINEE, methods=("POST",))
 @user_has_role(['MEMBER'])
 def trainee_session_performance(req, uskey_session):
     """
@@ -434,11 +467,11 @@ def trainee_session_performance(req, uskey_session):
     for performance in performances:
         performance = json_from_request(json.dumps(performance),
                                         mandatory_props=['recordDate', 'activityId', 'completeness', 'indicators'])
-        APIDB.create_performance(req.user, participation, **performance)
-    return 204, None
+        prformance = APIDB.create_performance(req.user, participation, **performance)
+    return HttpCreated()
 
 
-@app.route('/%s/courses/<uskey_course>/performances', methods=("GET",))
+@app.route('/%s/courses/<uskey_course>/performances' % APP_TRAINEE, methods=("GET",))
 @user_has_role(['MEMBER'])
 def trainee_course_performances(req, uskey_course):
     """

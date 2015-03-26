@@ -158,7 +158,7 @@ class CourseTrainers(GCModelMtoMNoRep):
 
 
 class Observation(GCModel):
-    created_by = ndb.KeyProperty(kind='User')
+    created_by = ndb.KeyProperty(kind='User', required=False)
     text = ndb.StringProperty()
     when = ndb.DateTimeProperty(auto_now=True)
 
@@ -176,8 +176,9 @@ class CourseSubscription(GCModelMtoMNoRep):
     increase_level = ndb.BooleanProperty(default=False, required=True)
     feedback = ndb.StringProperty(choices=["ACCEPTED", "DECLINED", "PENDING"], default="PENDING",
                                   required=True)
-    creation_date = ndb.DateTimeProperty(auto_now=True)
     observations = ndb.StructuredProperty(Observation, repeated=True)
+    start_date = ndb.DateTimeProperty(auto_now_add=True)
+    end_date = ndb.DateTimeProperty()
 
     # def to_dict(self):
     # result = super(CourseSubscription, self).to_dict()
@@ -297,17 +298,17 @@ class Session(GCModel):
     def active(self):
         return not self.canceled
 
-    # @property
-    # def get_on_before(self):
-    # return ndb.get_multi(self.on_before)
-    #
-    # @property
-    # def get_on_after(self):
-    # return ndb.get_multi(self.on_after)
-    #
-    # @property
-    # def get_exercises(self):
-    # return ndb.get_multi(self.list_exercises)
+    @property
+    def get_on_before(self):
+        return ndb.get_multi(self.on_before)
+
+    @property
+    def get_on_after(self):
+        return ndb.get_multi(self.on_after)
+
+    @property
+    def get_exercises(self):
+        return ndb.get_multi(self.list_exercises)
 
     def _pre_put_hook(self):
         if isinstance(self.profile, str):
@@ -319,25 +320,33 @@ class Session(GCModel):
     def is_valid(self):
         # check for the update/creation.
         course_type = self.course.get().course_type
+        if self.session_type == "SINGLE":
+            if not self.url:
+                return False, "Entity has uninitialized properties: url"
         if course_type == "SCHEDULED":
             if not self.start_date:
                 return False, "Entity has uninitialized properties: start_date"
             if not self.end_date:
                 return False, "Entity has uninitialized properties: end_date"
-            if not self.url:
-                return False, "Entity has uninitialized properties: url"
         if course_type == "PROGRAM":
             if not self.week_no:
                 return False, "Entity has uninitialized properties: week_no"
             if not self.day_no:
                 return False, "Entity has uninitialized properties: day_no"
-            if not self.url:
-                return False, "Entity has uninitialized properties: url"
         return True
 
     def to_dict(self):
         result = super(Session, self).to_dict()
         course = self.course.get().course_type
+        del result['course']
+        del result['list_exercises']
+        result['activities'] = self.get_exercises
+        result['on_before'] = self.get_on_before
+        result['on_after'] = self.get_on_after
+
+        del result['canceled']
+        if self.session_type != "SINGLE":
+            del result['url']
         if course != "SCHEDULED":
             del result['start_date']
             del result['end_date']
@@ -391,7 +400,7 @@ class Source(GCModel):
 class Detail(GCModel):
     created_for = ndb.KeyProperty(kind='Club', required=True)
     name = ndb.StringProperty(required=True)
-    detail_type = ndb.StringProperty()
+    detail_type = ndb.StringProperty(choices=["INTEGER", "FLOAT", "STRING", "BOOLEAN"], required=True)
     description = ndb.StringProperty(required=True)
 
     def to_dict(self):
@@ -437,8 +446,8 @@ class Level(GCModel):
         for i_detail in self.details_list:
             if i_detail['detail'] == detail.id:
                 raise BadParameters("%s is already present in the object" % detail.name)
-        self.details_list.append(dict(detail=detail.key.urlsafe(), value=value))
-        self.put()
+        self.details_list.append(dict(detail=detail, value=value))
+        # self.put()
 
     def to_dict(self):
         result = super(Level, self).to_dict()
@@ -452,7 +461,7 @@ class TimeData(GCModel):
     leave = ndb.DateTimeProperty()
 
     def set_js(self, prop, value):
-        setattr(self, prop, datetime.datetime.fromtimestamp(long(value) / 1000))
+        setattr(self, prop, datetime.fromtimestamp(long(value) / 1000))
 
     def to_dict(self):
         return dict(join=date_to_js_timestamp(self.join), leave=date_to_js_timestamp(self.leave))
@@ -564,7 +573,7 @@ class Indicator(GCModel):
     description = ndb.StringProperty(required=True)
     possible_answers = ndb.StructuredProperty(PossibleAnswer, repeated=True)
     required = ndb.BooleanProperty(default=True)
-    created_for = ndb.KeyProperty(kind='User', required=True)
+    created_for = ndb.KeyProperty(kind='Club', required=True)
 
 
 class Exercise(GCModel):
@@ -592,7 +601,14 @@ class Exercise(GCModel):
 
     def to_dict(self):
         result = super(Exercise, self).to_dict()
-        del result['created_for']
+        levels = []
+        for level in self.levels:
+            levels.append(level.to_dict())
+        result['levels'] = levels
+        result['level_count'] = self.level_count
+        result['indicator_count'] = self.indicator_count
+        del result['indicator_list']
+        # del result['created_for']
         return result
         # in case we need the key of a structured property
         # def to_dict(self):

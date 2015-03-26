@@ -2,7 +2,6 @@
 This file contains the class that abstract the ndb database and provides functions to access it.
 """
 from gaebasepy.gc_utils import date_from_js_timestamp
-from models import Club
 
 __author__ = 'stefano tranquillini'
 
@@ -204,11 +203,11 @@ class APIDB():
     # :param query:
     # :param kwargs:
     # :return:
-    #     """
-    #     if query:
-    #         return cls.__get(cls.model_club.query(query), **kwargs)
-    #     else:
-    #         return cls.__get(cls.model_club.query(), **kwargs)
+    # """
+    # if query:
+    # return cls.__get(cls.model_club.query(query), **kwargs)
+    # else:
+    # return cls.__get(cls.model_club.query(), **kwargs)
 
     @classmethod
     def get_club_by_id(cls, id_club):
@@ -229,7 +228,11 @@ class APIDB():
         :param club: the club
         :return: the membership type
         """
-        return cls.get_membership(user, club).membership_type
+        membership = cls.get_membership(user, club)
+        if membership:
+            return membership.membership_type
+        else:
+            return None
 
     @classmethod
     def get_club_all_members(cls, club, status="ACCEPTED", **kwargs):
@@ -379,7 +382,7 @@ class APIDB():
         :return: the membership object
         """
         if end_date and end_date.isNondigit():
-            end_date=date_from_js_timestamp(end_date)
+            end_date = date_from_js_timestamp(end_date)
         return cls.model_club_user(id=cls.model_club_user.build_id(user.key, club.key),
                                    member=user.key, club=club.key, is_active=True, membership_type="OWNER",
                                    status="ACCEPTED", end_date=end_date).put()
@@ -645,6 +648,26 @@ class APIDB():
         return cls.__get(sessions, **kwargs)
 
     @classmethod
+    def get_club_courses_im_subscribed_to(cls, user, club, course_type=None, active_only=None, **kwargs):
+        """
+        Gets the courses of the club that i'm subscribed to
+
+        :param user: the user
+        :param club: the club
+        :param kwargs: usual kwargs
+        :return: the list of curses
+        """
+        all_courses = cls.__get(cls.model_course_user.query(cls.model_course_user.member == user.key))
+        courses = [course for course in all_courses if course.club == club.key and not course.is_deleted]
+        if course_type:
+            t_courses = [course for course in courses if course.course_type == course_type]
+            courses = t_courses
+        if active_only:
+            t_courses = [course for course in courses if course.end_date > datetime.datetime.now()]
+            courses = t_courses
+        return cls.__get(courses, **kwargs)
+
+    @classmethod
     def get_club_courses_im_trainer_of(cls, user, club, **kwargs):
         """
         Gets the courses of the club that the user is trainer of
@@ -684,6 +707,13 @@ class APIDB():
         """
         session = cls.model_session()
         session.course = course.key
+        if "start_date" in args:
+            args['start_date'] = date_from_js_timestamp(args['start_date'])
+        if "end_date" in args:
+            args['end_date'] = date_from_js_timestamp(args['end_date'])
+        if "activities" in args:
+            activities = args.pop("activities")
+            args['list_exercises'] = [Key(urlsafe=k) for k in activities]
         cls.__create(session, **args)
         return session
 
@@ -696,6 +726,10 @@ class APIDB():
         :param args: dict containing the data of the session
         :return: the session
         """
+        if "activities" in args:
+            activities = args.pop("activities")
+            session.list_exercises = [Key(urlsafe=k) for k in activities]
+
         cls.__update(session, not_allowed=['course'], **args)
         return session
 
@@ -804,7 +838,7 @@ class APIDB():
         :param session: the session
         :return: the number
         """
-        return cls.model_participation.query(cls.model_participation.session == session).count()
+        return cls.model_participation.query(cls.model_participation.session == session.key).count()
         # while q_participations.count() > 0:
         # participations = q_participations.fetch(100)
         # for participation in participations:
@@ -945,7 +979,7 @@ class APIDB():
         sessions = []
         for course in courses:
             sessions.append(cls.get_course_sessions(course, date_from, date_to, session_type, status, **kwargs))
-        return sessions
+        return sessions, len(sessions)
 
     # [END] Session
 
@@ -962,9 +996,16 @@ class APIDB():
         """
         exercise = cls.model_exercise()
         exercise.created_for = club.key
+        if "indicators" in args:
+            indicators = args.pop('indicators')
+            indicator_list = []
+            for indicator in indicators:
+                indicator_list.append(Key(urlsafe=indicator))
+            args['indicator_list'] = indicator_list
         cls.__create(exercise, **args)
         return exercise
 
+    @classmethod
     def update_activity(cls, activity, **args):
         """
         Updates an activity
@@ -973,6 +1014,12 @@ class APIDB():
         :param args: dict containing the data of the activity
         :return: the activity
         """
+        if "indicators" in args:
+            indicators = args.pop('indicators')
+            indicator_list = []
+            for indicator in indicators:
+                indicator_list.append(Key(urlsafe=indicator))
+            args['indicator_list'] = indicator_list
         updated, obj = cls.__update(activity, **args)
         return obj
 
@@ -986,7 +1033,14 @@ class APIDB():
         :return: the level
         """
         level = cls.model_level()
+        level.details_list = []
+        if 'details' in args:
+            details = args.pop('details')
+            for detail in details:
+                level.add_detail(detail['id'], detail['value'])
         level = cls.__create(level, **args)
+        exercise.levels.append(level)
+        exercise.put()
         return level
 
     @classmethod
@@ -998,10 +1052,11 @@ class APIDB():
         :param args: dict containing the data of the level
         :return: the level
         """
-        details = args.pop('details')
-        level.details_list = []
-        for detail in details:
-            level.add_detail(detail)
+        if 'details' in args:
+            details = args.pop('details')
+            level.details_list = []
+            for detail in details:
+                level.add_detail(detail['id'], detail['value'])
         cls.__update(level, **args)
 
         return level
@@ -1161,9 +1216,11 @@ class APIDB():
         :param values: dict containing the values to update
         :return: Tuple -> Bool, User
         """
+        if "increase_level" in values:
+            values['increase_level'] = values['increase_level'] == "True"
         return cls.__update(user, not_allowed=not_allowed, **values)
 
-    #[END] Subscriptions
+    # [END] Subscriptions
 
     #[BEGIN] details
     @classmethod
@@ -1186,7 +1243,7 @@ class APIDB():
         :param args: usual args
         :return: the detail
         """
-        detail = models.Detail
+        detail = models.Detail()
         detail.created_for = club.key
         return cls.__create(detail, **args)
 
@@ -1224,7 +1281,7 @@ class APIDB():
         :param args: usual args
         :return: the indicator
         """
-        indicator = models.Indicator
+        indicator = models.Indicator()
         indicator.created_for = club.key
         return cls.__create(indicator, **args)
 
@@ -1425,7 +1482,7 @@ class APIDB():
             return l
 
     @classmethod
-    def __get_relation_if_needed(cls, result, projection=None, merge=None):  # pragma: no cover
+    def __get_relation_if_needed(cls, result, projection=None, merge=None, **kwargs):  # pragma: no cover
         """
         it gets the results from a list of relation that comes from the support table of an M2M rel.
 
@@ -1440,6 +1497,7 @@ class APIDB():
         :param result: the result of the query
         :param projection: the field to use for getting back the data
         :param merge: the field where the relation is added (optional)
+        :param kwargs: additoanl args not used in this function.
         :return: the list of objects
         """
         # empty list

@@ -65,3 +65,4 @@ test.txt.backup
 testnew.txt
 _build
 doc_build.temp
+new_tests.py

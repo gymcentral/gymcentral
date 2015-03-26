@@ -43,14 +43,13 @@ class GCApp(WSGIApp):
         app_id = request.headers.get("X-App-Id")
         if "trainee" in request.url:
             if not app_id in cfg.APPIDS_TRAINEE:
-                raise AuthenticationError("%s %s %s" % (app_id, cfg.APPIDS_TRAINEE, (app_id in cfg.APPIDS_TRAINEE)))
+                raise AuthenticationError("Your key %s is not valid" % app_id)
         elif "coach" in request.url:
             if not app_id in cfg.APPIDS_COACH:
                 raise AuthenticationError()
-
         kwargs = router.match(request)[2]
         if kwargs:
-            if len(kwargs) == 1:
+            if len(kwargs) >= 1:
                 key, value = kwargs.popitem()
                 # i suppose that 'uskey' for the name is used when it's a UrlSafeKEY.
                 # this kind of key can be loaded here
@@ -61,7 +60,7 @@ class GCApp(WSGIApp):
                         try:
                             model = Key(urlsafe=value).get()
                             if not model.active:
-                                raise NotFoundException(message=", it was deleted")
+                                raise NotFoundException()
                             setattr(request, cfg.MODEL_NAME, model)
                         except:
                             raise NotFoundException()
