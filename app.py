@@ -11,7 +11,7 @@ from gaebasepy.auth import GCAuth
 from gaebasepy.exceptions import NotFoundException, AuthenticationError
 from gaebasepy.gc_utils import camel_case
 from gaebasepy.http_codes import GCHttpCode
-
+import logging
 
 __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 
@@ -93,4 +93,5 @@ class GCApp(WSGIApp):
 
 # data
 # check the cfg file, it should not be uploaded!
+
 app = GCApp(config=cfg.API_APP_CFG, debug=cfg.DEBUG)

@@ -19,7 +19,7 @@ if grep -q "OK" result.test; then
         echo "Documentation: OK"
         echo ""
         echo "Updating server"
-        appcfg.py update .
+        appcfg.py update . --oauth2
 #    else
 #        echo "Error during the building of documentation"
 #    fi

@@ -54,6 +54,53 @@ def coach_profile(req):
         return sanitize_json(j_user, out)
 
 
+@app.route('/%s/clubs' % APP_COACH, methods=('GET',))
+@user_required
+def coach_club_list(req):
+    """
+    ``GET`` @ |ta| +  ``/clubs``
+
+    List of the clubs
+    """
+    # check if there's the filter
+    user = req.user
+    j_req = json_from_paginated_request(req, (('paginated', 'true'),))
+    page = int(j_req['page'])
+    size = int(j_req['size'])
+    paginated = j_req['paginated'] == 'true'
+
+    if paginated:
+        clubs, total = APIDB.get_user_owner_or_trainer_of(user, paginated=True, page=page, size=size)
+    else:
+        clubs = APIDB.get_user_owner_or_trainer_of(user)
+    # render accordingly to the doc.
+    ret = {}
+    items = []
+    for club in clubs:
+        j_club = club.to_dict()
+        j_club['role'] = club.membership.membership_type
+        j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
+        j_club['course_count'] = APIDB.get_club_courses(club, count_only=True)
+        j_club['owner_count'] = APIDB.get_club_owners(club, count_only=True)
+        j_club['trainer_count'] = APIDB.get_club_trainers(club, count_only=True)
+        # j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['id','name', 'picture'])
+        items.append(j_club)
+        j_club['trainers'] = sanitize_list(APIDB.get_club_trainers(club), ['id', 'name', 'picture'])
+
+    if paginated:
+        ret['results'] = sanitize_list(items,
+                                       ['id', 'name', 'description', 'url', 'creation_date', 'is_open', 'tags',
+                                        'owner_count', 'trainer_count',
+                                        'member_count', 'course_count', 'trainers', 'role'])
+        ret['total'] = total
+        return ret
+    else:
+        return sanitize_list(items,
+                             ['id', 'name', 'description', 'url', 'creation_date', 'is_open', 'tags', 'owner_count',
+                              'trainer_count',
+                              'member_count', 'course_count', 'trainers', 'role'])
+
+
 @app.route('/%s/clubs' % APP_COACH, methods=('POST',))
 @user_required
 def coach_club_create(req):
@@ -62,7 +109,7 @@ def coach_club_create(req):
 
     Create a club.
     """
-    j_req = json_from_request(req, mandatory_props=["name", "description", "url", "isOpen", 'tags'])
+    j_req = json_from_request(req, mandatory_props=["name", "url", "isOpen"], optional_props=['tags', "description"])
     club = APIDB.create_club(**j_req)
     APIDB.add_owner_to_club(req.user, club)
     # users the rendering of club details, add 201 code
@@ -84,8 +131,9 @@ def coach_club_details(req, uskey_club):
     j_club['course_count'] = APIDB.get_club_courses(club, count_only=True)
     # j_club['courses'] = sanitize_list(APIDB.get_club_courses(club),
     # ['name', 'start_date', 'end_date', 'course_type'])
-    j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['name', 'picture'])
-    return sanitize_json(j_club, ['id', 'name', 'description', 'url', 'creation_date', 'is_open', 'owners',
+    j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['id', 'name', 'picture'])
+    j_club['trainers'] = sanitize_list(APIDB.get_club_trainers(club), ['id', 'name', 'picture'])
+    return sanitize_json(j_club, ['id', 'name', 'description', 'url', 'creation_date', 'is_open', 'owners', 'trainers',
                                   'member_count', 'course_count', 'tags'])
 
 
@@ -219,11 +267,11 @@ def coach_course_list(req, uskey_club):
     List of the courses of a club. |uroleOT|
     """
     club = req.model
-    j_req = json_from_paginated_request(req, (('courseType', None), ('activeOnly', "True"),))
+    j_req = json_from_paginated_request(req, (('courseType', None), ('activeOnly', None),))
     page = int(j_req['page'])
     size = int(j_req['size'])
     course_type = j_req['courseType']
-    active_only = j_req['activeOnly'] == "True"
+    active_only = j_req['activeOnly'] == "true"
     courses, total = APIDB.get_club_courses(club, course_type=course_type, active_only=active_only,
                                             paginated=True, page=page, size=size)
     res_courses = []
@@ -255,6 +303,20 @@ def coach_course_create(req, uskey_club):
     """
     j_req = json_from_request(req, mandatory_props=["name", "description", "courseType"],
                               optional_props=["startDate", "endDate", "duration"])
+    print j_req
+    try:
+        if "startDate" in j_req:
+            j_req['startDate'] = datetime.datetime.fromtimestamp(long(j_req['startDate']) / 1000)
+    except Exception as e:
+        raise BadParameters("startDate is not a correct date")
+        # j_req['startDate'] = datetime.datetime.now()
+    try:
+        if "startDate" in j_req:
+            j_req['endDate'] = datetime.datetime.fromtimestamp(long(j_req['endDate']) / 1000)
+    except Exception as e:
+        raise BadParameters("endDate is not a correct date")
+    if "duration" in j_req:
+        j_req['duration'] = int(j_req['duration'])
     course = APIDB.create_course(req.model, **j_req)
     APIDB.add_trainer_to_course(req.user, course)
     req.model = course
@@ -288,7 +350,12 @@ def coach_course_update(req, uskey_course):
     Update the datail of a course. |uroleOT|
     """
     j_req = json_from_request(req,
-                              optional_props=["name", "description", "courseType", "startDate", "endDate", "duration"])
+                              optional_props=["name", "description", "startDate", "endDate", "duration"])
+    if "start_date" in j_req:
+        j_req['start_date'] = datetime.datetime.fromtimestamp(long(j_req['start_date']) / 1000)
+    if "end_date" in j_req:
+        j_req['end_date'] = datetime.datetime.fromtimestamp(long(j_req['end_date']) / 1000)
+
     course = APIDB.update_course(req.model, **j_req)
     req.model = course
     return coach_course_detail(req, uskey_course)
@@ -342,9 +409,10 @@ def coach_course_session_list(req, uskey_course):
         res_obj = session.to_dict()
         res_obj['status'] = session.status
         # res_obj['participated'] = APIDB.user_participated_in_session(req.user, session)
-        res_obj['participation_count'] = APIDB.get_session_participation(session)
+        res_obj['participation_count'] = APIDB.get_session_participations(session, count_only=True)
         # res_obj['actnoivity_count'] = session.activity_count
-        allowed = ['id', 'name', 'status', 'url', 'participation_count',
+        # TODO: check the 'url' here
+        allowed = ['id', 'name', 'status', 'participation_count',
                    'session_type']
         course_type = session.course.get().course_type
         if course_type == "SCHEDULED":
@@ -364,9 +432,9 @@ def coach_course_session_create(req, uskey_course):
     Create a sessions for the course. |uroleOT|
     """
     course = req.model
-    j_req = json_from_request(req, mandatory_props=["name", "sessionType", "profile"],
+    j_req = json_from_request(req, mandatory_props=["name", "sessionType", ],
                               optional_props=["startDate", "endDate", "weekNo", "dayNo", "url", "metaData",
-                                              "activities"])
+                                              "activities", "profile"])
 
     session = APIDB.create_session(course, **j_req)
 
@@ -402,7 +470,7 @@ def coach_session_detail(req, uskey_session):
                                             allowed=['id', 'name', 'level_count'])
     # there should be 'type',x
     allowed = ['id', 'name', 'status', 'participation_count',
-               'activities', 'session_type', 'profile', 'meta_data', 'on_before', 'on_after']
+               'activities', 'session_type', 'profile', 'meta_data', 'on_before', 'on_after', 'created']
     course_type = session.course.get().course_type
     if session.session_type == "SINGLE":
         allowed += ['url']
@@ -428,7 +496,7 @@ def coach_course_session_update(req, uskey_session):
                               optional_props=["name", "sessionType", "profile", "startDate", "endDate", "weekNo",
                                               "dayNo", "url", "metaData", "activities"])
     session = APIDB.update_session(session, **j_req)
-    return session
+    return sanitize_json(session)
 
 
 @app.route('/%s/sessions/<uskey_session>' % APP_COACH, methods=('DELETE',))
@@ -444,6 +512,39 @@ def coach_course_session_delete(req, uskey_session):
     return HttpEmpty()
 
 
+@app.route('/%s/sessions/<uskey_session>/participations' % APP_COACH, methods=('GET',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_session_participations(req, uskey_session):
+    """
+    ``GET`` @ |ca| +  ``/sessions/<uskey_session>/participations``
+
+    Participation on a session. |uroleOT|
+    """
+    session = req.model
+    user = req.user
+    j_req = json_from_paginated_request(req)
+    # if j_req['paginated']:
+    participations, total = APIDB.get_session_participations(session, paginated=True, size=j_req['size'],
+                                                             page=j_req['page'])
+    # else:
+    # participations = APIDB.get_session_participations(session, paginated=True, size=j_req['size'],
+    # page=j_req['page'])
+
+    res_list = []
+    for participation in participations:
+        res = participation.to_dict()
+        res['user'] = sanitize_json(participation.user, ['name', 'id', 'avatar', 'picture'])
+        subscription = APIDB.get_course_subscription(session.course, participation.user)
+        res['current_level'] = subscription.profile_level
+        res['level_up'] = subscription.increase_level
+        res['indicators'] = participation.indicators
+        res['max_completeness'] = participation.max_completeness
+        res['participation_count'] = participation.participation_count
+        res_list.append(sanitize_json(res, ['id', 'user', 'participation', 'level_up', 'current_level', 'indicators',
+                                            'max_completeness', 'completeness', 'participation_count', 'time']))
+    return dict(results=res_list, total=total)
+
+
 @app.route('/%s/clubs/<uskey_club>/sessions' % APP_COACH, methods=('GET',))
 @user_has_role(["TRAINER", "OWNER"])
 def coach_club_session_list(req, uskey_club):
@@ -453,11 +554,12 @@ def coach_club_session_list(req, uskey_club):
     List of the sessions of a club. |uroleOT|
     """
     club = req.model
-    j_req = json_from_paginated_request(req, (('status', None), ('type', None),
+    j_req = json_from_paginated_request(req, (('status', None), ('notStatus', None), ('type', None),
                                               ('from', None),
                                               ('to', None)))
     page = int(j_req['page'])
     size = int(j_req['size'])
+
     try:
         date_from = datetime.datetime.fromtimestamp(long(j_req['from']) / 1000)
     except Exception as e:
@@ -469,9 +571,11 @@ def coach_club_session_list(req, uskey_club):
     session_type = j_req['type']
 
     role = APIDB.get_user_club_role(req.user, club)
+    logging.debug(j_req)
     if role == "OWNER":
         sessions, total = APIDB.get_club_sessions(club, date_from=date_from, date_to=date_to,
-                                                  session_type=session_type, paginated=True, page=page, size=size)
+                                                  session_type=session_type, paginated=True,
+                                                  not_status=j_req['notStatus'], page=page, size=size)
     else:
         sessions, total = APIDB.get_session_im_trainer_of(req.user, club, date_from=date_from, date_to=date_to,
                                                           session_type=session_type, paginated=True, page=page,
@@ -480,10 +584,10 @@ def coach_club_session_list(req, uskey_club):
     for session in sessions:
         res_obj = session.to_dict()
         res_obj['status'] = session.status
-        res_obj['participation_count'] = APIDB.get_session_participation(session)
+        res_obj['participation_count'] = APIDB.get_session_participations(session, count_only=True)
         res_obj['course'] = sanitize_json(session.course.get(), allowed=['id', 'name'])
         allowed = ['id', 'name', 'status', 'participation_count',
-                   'session_type', 'course']
+                   'session_type', 'course', 'created']
         course_type = session.course.get().course_type
         if course_type == "SCHEDULED":
             allowed += ["start_date", "end_date"]
@@ -495,7 +599,7 @@ def coach_club_session_list(req, uskey_club):
     return dict(total=total, results=res_list)
 
 
-@app.route('/%s/courses/<uskey_course>/subscribers' % APP_COACH, methods=('GET',))
+@app.route('/%s/courses/<uskey_course>/subscriptions' % APP_COACH, methods=('GET',))
 @user_has_role(["TRAINER", "OWNER"])
 def coach_course_subscribers(req, uskey_course):
     """
@@ -777,7 +881,7 @@ def coach_details_update(req, uskey_detail):
     Updates a detail. |uroleOT|
     """
     detail = req.model
-    j_req = json_from_request(req, optional_props=['name', 'detailType', 'description'])
+    j_req = json_from_request(req, optional_props=['name', 'd etailType', 'description'])
     APIDB.update_detail(detail, **j_req)
     req.model = detail
     return coach_details_detail(req, uskey_detail)
@@ -839,3 +943,22 @@ def coach_indicators_update(req, uskey_indicator):
                               optional_props=['name', 'indicatorType', 'description', 'possibleAnswers', 'required'])
     updated, indicator = APIDB.update_indicator(indicator, **j_req)
     return indicator.to_dict()
+
+
+@app.route('/%s/performances/<uskey_perfomance>' % APP_COACH, methods=('GET',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_performance_detail(req, uskey_session):
+    """
+    ``GET`` @ |ca| +  ``/performances/<uskey_perfomance>``
+
+    Details of the performance. |uroleOT|
+    """
+    performance = req.model
+    res = performance.to_dict()
+    activity = performance.activity.get()
+    res['activity'] = sanitize_json(activity, ['name', 'id'])
+    res['indicators'] = performance.indicators
+    res['max_completeness'] = performance.max_completeness
+    return sanitize_json(res,
+                         ['id', 'activity', 'indicators', 'max_completeness', 'completeness', 'record_date', 'level'])
+

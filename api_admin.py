@@ -66,6 +66,8 @@ def auth(req, provider, token):  # pragma: no cover
         user = user_via_mail
     # create the user..
     created = False
+    if 'gender' not in d_user:
+        d_user['gender'] = "unknown"
     if not user:
         if provider == 'google':
             created, user = User.create_user(auth_id, unique_properties=['email'],
@@ -76,7 +78,8 @@ def auth(req, provider, token):  # pragma: no cover
                                              country="",
                                              city="",
                                              language=d_user['locale'], email=d_user['email'], phone="",
-                                             active_club=None)
+                                             active_club=None,
+                                             owner_club=None)
         elif provider == 'facebook':
             created, user = User.create_user(auth_id, unique_properties=['email'],
                                              name=d_user['name'],
@@ -86,7 +89,8 @@ def auth(req, provider, token):  # pragma: no cover
                                              avatar="",
                                              birthday=datetime.datetime.now(), country="", city="",
                                              language=d_user['locale'][0:2], email=d_user['email'], phone="",
-                                             active_club=None)
+                                             active_club=None,
+                                             owner_club=None)
         else:
             raise AuthenticationError("provider not allowed")
         if not created:
@@ -121,7 +125,7 @@ def delete_auth(req):  # pragma: no cover
 
     # removes token that are not used for this amount of time
     delta = datetime.timedelta(seconds=int(cfg.AUTH_TOKEN_MAX_AGE))
-    expired_tokens = User.token_model.query(User.token_model.updated <= (datetime.datetime.utcnow() - delta))
+    expired_tokens = User.token_model.query(User.token_model.updated <= (datetime.datetime.now() - delta))
     # delete the tokens in bulks of 100:
     while expired_tokens.count() > 0:
         keys = expired_tokens.fetch(100, keys_only=True)
@@ -131,7 +135,7 @@ def delete_auth(req):  # pragma: no cover
 # @app.route("/%s/init-db" % APP_ADMIN, methods=('GET',))
 # def init_db(req):  # pragma: no cover
 # # IGNORE
-#     trainer = User.query(ndb.GenericProperty('email') == "trainer@test.com").get()
+# trainer = User.query(ndb.GenericProperty('email') == "trainer@test.com").get()
 #     if not trainer:
 #         trainer = APIDB.create_user("own:" + "trainer", nickname="trainer", name="trainer", gender="m",
 #                                     avatar="..",
@@ -183,6 +187,8 @@ def hw(req):  # pragma: no cover
     Test function that replies "hello world"
     '''
     return "hello world!"
+
+
 #
 #
 @app.route("/%s/hw/<uskey_obj>" % APP_ADMIN, methods=('GET', ))
@@ -193,6 +199,7 @@ def hw_par(req, uskey_obj):  # pragma: no cover
     Test function that replies the value passed in the URL
     '''
     return uskey_obj
+
 #
 #
 # @app.route("/%s/hw" % APP_ADMIN, methods=('POST', ))

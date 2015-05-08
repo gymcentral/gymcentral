@@ -12,6 +12,7 @@ from gaebasepy.exceptions import AuthenticationError, BadParameters
 __author__ = 'fab,stefano.tranquillini'
 
 from google.appengine.ext import ndb
+from google.appengine.api import search
 
 # TODO create a GCMOdel for the support table that automatically has the get/build id
 
@@ -55,6 +56,13 @@ class User(GCUser):
                                             ClubMembership.membership_type == "OWNER",
                                             ClubMembership.is_active == True))
 
+    @property
+    def owner_or_trainer_of(self):
+        return ClubMembership.query(ClubMembership.member == self.key,
+                                    ndb.OR(ClubMembership.membership_type == "OWNER",
+                                           ClubMembership.membership_type == "TRAINER"),
+                                    ClubMembership.is_active == True)
+
     def member_of_type(self, membership_types=None):
         if not membership_types: membership_types = []
         return ClubMembership.query(ndb.AND(ClubMembership.member == self.key,
@@ -78,6 +86,18 @@ class User(GCUser):
         del d['auth_ids']
         del d['password']
         return d
+
+    # def _post_put_hook(self, future):
+    #     # create the search doc
+    #     user_doc = search.Document(
+    #         doc_id=self.id,
+    #         fields=[
+    #             search.TextField(name='name', value=self.name),
+    #             search.TextField(name='email', value=self.email),
+    #             search.TextField(name='nickname', value=self.nickname)
+    #         ])
+    #     index = search.Index(name="users")
+    #     index.put(user_doc)
 
 
 class Course(GCModel):
@@ -129,6 +149,8 @@ class Course(GCModel):
                 return False, "Entity has uninitialized properties: start_date"
             if not self.end_date:
                 return False, "Entity has uninitialized properties: end_date"
+            if not self.start_date <= self.end_date:
+                return False, "Start date should be before end date"
         if self.course_type == "PROGRAM":
             if not self.duration:
                 return False, "Entity has uninitialized properties: duration"
@@ -259,7 +281,19 @@ class Club(GCModel):
     def owners(self):
         return self.all_memberships.filter(ClubMembership.membership_type == "OWNER")
 
-
+    # def _post_put_hook(self, future):
+    #     # create the search doc
+    #     club_doc = search.Document(
+    #         doc_id=self.id,
+    #         fields=[
+    #             search.TextField(name='name', value=self.name),
+    #             search.TextField(name='email', value=self.email),
+    #             search.TextField(name='description', value=self.description),
+    #             search.TextField(name='tags', value=" ".join(self.tags))
+    #         ])
+    #
+    #     index = search.Index(name="clubs")
+    #     index.put(club_doc)
         # these methods are not used anymore, there's the query()
         # @classmethod
         # def get_by_email(cls, email, **kwargs):
@@ -319,7 +353,8 @@ class Session(GCModel):
 
     def is_valid(self):
         # check for the update/creation.
-        course_type = self.course.get().course_type
+        course = self.course.get()
+        course_type = course.course_type
         if self.session_type == "SINGLE":
             if not self.url:
                 return False, "Entity has uninitialized properties: url"
@@ -328,6 +363,12 @@ class Session(GCModel):
                 return False, "Entity has uninitialized properties: start_date"
             if not self.end_date:
                 return False, "Entity has uninitialized properties: end_date"
+            if not self.start_date <= self.end_date:
+                return False, "Start date should be before end date"
+            if self.start_date < course.start_date or self.start_date > course.end_date:
+                return False, "Start date should be after the course start date and before the end"
+            if self.end_date < course.start_date or self.end_date > course.end_date:
+                return False, "End date should be after the course start date and before the end"
         if course_type == "PROGRAM":
             if not self.week_no:
                 return False, "Entity has uninitialized properties: week_no"
@@ -474,10 +515,12 @@ class Participation(GCModel):
     time = ndb.StructuredProperty(TimeData, repeated=True)
     completeness = ndb.IntegerProperty(repeated=True)
     # when = ndb.DateTimeProperty(repeated=True)
+    # this is a list of list, as for completeness it is updated everytime
     indicator_list = ndb.PickleProperty(default=[])
 
     @classmethod
     def get_by_data(cls, user, session, level=None):
+        # gets the participation by its data
         query = cls.query(
             ndb.AND(cls.session == session.key,
                     cls.user == user.key))
@@ -499,20 +542,19 @@ class Participation(GCModel):
     def indicators(self):
         ret = []
         # noinspection PyTypeChecker
-        for ind in self.indicator_list:
-            indicator = Key(urlsafe=ind['indicator']).get()
-            # we make a copy, it's direct access to it..
-            d_indicator = indicator.to_dict()
-            d_indicator['value'] = indicator['value']
-            ret.append(d_indicator)
+        for inds in self.indicator_list:
+            ret_i = []
+            for ind in inds:
+                indicator = Key(urlsafe=ind['indicator']).get()
+                # we make a copy, it's direct access to it..
+                d_indicator = indicator.to_dict()
+                d_indicator['value'] = indicator['value']
+                ret_i.append(d_indicator)
+            ret.append(ret_i)
         return ret
 
-    def add_indicator(self, indicator, value):
-        # noinspection PyTypeChecker
-        for i_detail in self.indicator_list:
-            if i_detail['indicator'] == indicator.id:
-                raise BadParameters("%s is already present in the object" % indicator.name)
-        self.indicator_list.append(dict(indicator=indicator.id, value=value))
+    def add_indicators(self, indicators):
+        self.indicator_list.append(indicators)
         self.put()
 
     @property
@@ -532,20 +574,19 @@ class Performance(GCModelMtoMNoRep):
     def indicators(self):
         ret = []
         # noinspection PyTypeChecker
-        for ind in self.indicator_list:
-            indicator = Key(urlsafe=ind['indicator']).get()
-            # we make a copy, it's direct access to it..
-            d_indicator = indicator.to_dict()
-            d_indicator['value'] = indicator['value']
-            ret.append(d_indicator)
+        for inds in self.indicator_list:
+            ret_i = []
+            for ind in inds:
+                indicator = Key(urlsafe=ind['indicator']).get()
+                # we make a copy, it's direct access to it..
+                d_indicator = indicator.to_dict()
+                d_indicator['value'] = indicator['value']
+                ret_i.append(d_indicator)
+            ret.append(ret_i)
         return ret
 
-    def add_indicator(self, indicator, value):
-        # noinspection PyTypeChecker
-        for i_detail in self.indicator_list:
-            if i_detail['indicator'] == indicator.id:
-                raise BadParameters("%s is already present in the object" % indicator.name)
-        self.indicator_list.append(dict(indicator=indicator.id, value=value))
+    def add_indicators(self, indicators):
+        self.indicator_list.append(indicators)
         self.put()
 
     @property

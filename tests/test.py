@@ -10,6 +10,9 @@ from api_db_utils import APIDB
 
 
 
+
+
+
 # don't delete these
 from api_admin import app as app_admin
 from api_trainee import app as app_trainee
@@ -25,7 +28,8 @@ class APITestCases(unittest.TestCase):
         app_trainee
         app_admin
         logging.config.fileConfig('../logging.conf')
-        self.logger = logging.getLogger('myLogger')
+        self.logger = logging.getLogger(__name__)
+
         # First, create an instance of the Testbed class.
         self.testbed = testbed.Testbed()
         # Then activate the testbed, which prepares the service stubs for use.
@@ -94,7 +98,7 @@ class APITestCases(unittest.TestCase):
                         self.logger.error("Value error %s: %s %s" % (key, date1, date2))
                         return False
                 except:
-                    print Exception("Value error %s: %s %s" % (key, v2, value))
+                    self.logger.error("EXCEPTION: Value error %s: %s %s" % (key, v2, value))
                     return False
         return True
 
@@ -181,25 +185,30 @@ class APITestCases(unittest.TestCase):
         assert response.json['id'] == self.coach.id
 
     def test_club(self):
-        club_response = ['id', 'name', 'description', 'url', 'isOpen', 'creationDate', 'owners', 'memberCount',
-                         'courseCount', 'tags']
+
+        club_response_trainee = ['id', 'name', 'description', 'url', 'isOpen', 'creationDate', 'owners',
+                                 'memberCount',
+                                 'courseCount', 'tags']
+        club_response_coach = club_response_trainee + ['trainers']
         d_input = dict(name="club name", description="description club", url="http://gymcentral.net", isOpen=True,
                        tags=['test', 'tag'])
         # # missing pars
         self.app.post('/api/coach/clubs', status=400, headers=self.auth_headers_coach)
         # # correct
         d_output = self.app.post_json('/api/coach/clubs', d_input, headers=self.auth_headers_coach).json
-        assert self._correct_response(club_response, d_input, d_output)
+        assert self._correct_response(club_response_coach, d_input, d_output)
         id_club = d_output['id']
         # there is one club
         d_output = self.app.get('/api/trainee/clubs', headers=self.auth_headers_trainee).json
         assert d_output['total'] == 1
-        assert self._correct_response(club_response, d_input, d_output['results'][0])
+        logging.debug(d_output['results'][0])
+        # trainee call does not have this
+        assert self._correct_response(club_response_trainee, d_input, d_output['results'][0])
 
         # update
         d_input = dict(name="club name 2")
         d_output = self.app.put_json('/api/coach/clubs/%s' % id_club, d_input, headers=self.auth_headers_coach).json
-        assert self._correct_response(club_response, d_input, d_output)
+        assert self._correct_response(club_response_coach, d_input, d_output)
 
 
         # # another coach (owner) cannot update it
@@ -211,18 +220,18 @@ class APITestCases(unittest.TestCase):
         d_input = dict(name="club name dummy")
         d_output = self.app.put_json('/api/coach/clubs/%s' % id_club, d_input,
                                      headers=self.auth_headers_coach_dummy).json
-        assert self._correct_response(club_response, d_input, d_output)
+        assert self._correct_response(club_response_coach, d_input, d_output)
 
         # trainee
         self._trainee_club(id_club)
         d_output = self.app.get('/api/trainee/users/current/clubs', headers=self.auth_headers_trainee).json
         assert d_output['total'] == 1, d_output
-        assert self.__has_keys(club_response, d_output['results'][0])
+        assert self.__has_keys(club_response_trainee, d_output['results'][0])
         d_output = self.app.get('/api/trainee/clubs/current/members', headers=self.auth_headers_trainee).json
         # the two owners.
         assert d_output['total'] == 3, d_output
         club_detail_response = ['id', 'name', 'description', 'url', 'isOpen', 'creationDate', 'owners', 'memberCount',
-                         'courses']
+                                'courses']
         d_output = self.app.get('/api/trainee/clubs/%s' % id_club, d_input, headers=self.auth_headers_trainee).json
         assert self.__has_keys(club_detail_response, d_output), d_output
 
@@ -233,6 +242,7 @@ class APITestCases(unittest.TestCase):
         d_output = self.app.get('/api/trainee/clubs', headers=self.auth_headers_trainee).json
         assert d_output['total'] == 0
 
+    #
     def test_membership(self):
         id_club = self._create_club()
         # add another trainer, this fails
@@ -284,10 +294,12 @@ class APITestCases(unittest.TestCase):
                                    'sessionCount', 'courseType']
         # create a course
         d_input = dict(name="name course", description="description course",
-                       startDate=date_to_js_timestamp(datetime.now()), endDate=date_to_js_timestamp(datetime.now()),
+                       startDate=date_to_js_timestamp(datetime.utcnow()),
+                       endDate=date_to_js_timestamp(datetime.utcnow()),
                        courseType="SCHEDULED")
         d_output = self.app.post_json('/api/coach/clubs/%s/courses' % id_club, d_input,
                                       headers=self.auth_headers_coach).json
+        self.logger.debug("%s %s " % (d_input, d_output))
         assert self._correct_response(course_response_scheduled, d_input, d_output)
         id_course = d_output['id']
 
@@ -299,25 +311,23 @@ class APITestCases(unittest.TestCase):
                                 headers=self.auth_headers_coach).json
         assert d_output['total'] == 1
         # check if the item is correct
+
         assert self._correct_response(course_response_scheduled, d_input, d_output['results'][0]), d_output
 
-        #trainee
+        # trainee
         self._trainee_club(id_club)
         d_output = self.app.get('/api/trainee/clubs/current/courses', dict(activeOnly=False),
                                 headers=self.auth_headers_trainee).json
-        assert self.__has_keys(course_response_scheduled,d_output['results'][0]), d_output
+        assert self.__has_keys(course_response_scheduled, d_output['results'][0]), d_output
         self._trainee_course(id_course)
         d_output = self.app.get('/api/trainee/courses/%s' % id_course, headers=self.auth_headers_trainee).json
-        assert self.__has_keys(course_response_scheduled,d_output), d_output
+        assert self.__has_keys(course_response_scheduled, d_output), d_output
 
-
-        # update it
-        d_input = dict(name="updated course", duration=10, courseType="PROGRAM")
+        d_input = dict(name="updated course")
         d_output = self.app.put_json('/api/coach/courses/%s' % id_course, d_input, headers=self.auth_headers_coach).json
-        assert self._correct_response(course_response_program, d_input, d_output)
+        self.logger.debug(d_output)
 
-        d_output = self.app.get('/api/coach/courses/%s' % id_course, d_input, headers=self.auth_headers_coach).json
-        assert self._correct_response(course_response_program, d_input, d_output)
+        assert self._correct_response(course_response_scheduled, d_input, d_output)
 
         # delete it
         self.app.delete('/api/coach/courses/%s' % id_course, headers=self.auth_headers_coach)
@@ -333,7 +343,7 @@ class APITestCases(unittest.TestCase):
         id_club = self._create_club()
         id_course = self._create_course('FREE', id_club=id_club)
         session_response_base = ['id', 'name', 'sessionType', 'profile', 'status', 'metaData', 'activities', 'onBefore',
-                                 'onAfter']
+                                 'onAfter', 'created']
         session_response_single = session_response_base + ['url']
 
         d_input = dict(name="session base", profile=dict(name="profile test"), sessionType='JOINT')
@@ -371,7 +381,7 @@ class APITestCases(unittest.TestCase):
 
         id_course = self._create_course('SCHEDULED', id_club=id_club)
         session_response_base = ['id', 'name', 'sessionType', 'profile', 'status', 'metaData', 'activities', 'onBefore',
-                                 'onAfter']
+                                 'onAfter', 'created']
         session_response_scheduled = session_response_base + ['startDate', 'endDate']
         d_input = dict(name="session base 2", profile=dict(name="profile test"), sessionType='JOINT',
                        startDate=date_to_js_timestamp(datetime.now() - timedelta(hours=1)),
@@ -387,19 +397,19 @@ class APITestCases(unittest.TestCase):
 
         id_course = self._create_course('PROGRAM', id_club=id_club)
         session_response_base = ['id', 'name', 'sessionType', 'profile', 'status', 'metaData', 'activities', 'onBefore',
-                                 'onAfter']
+                                 'onAfter', 'created']
         session_response_program = session_response_base + ['weekNo', 'dayNo']
         d_input = dict(name="session base 3", profile=dict(name="profile test"), sessionType='JOINT', weekNo=1, dayNo=2)
         d_output = self.app.post_json('/api/coach/courses/%s/sessions' % id_course, d_input,
                                       headers=self.auth_headers_coach).json
         id_session = d_output['id']
-
         assert self._correct_response(session_response_program, d_input, d_output), d_output
 
-        d_output = self.app.get('/api/coach/clubs/%s/sessions' % id_club, headers=self.auth_headers_coach).json
+        d_output = self.app.get('/api/coach/clubs/%s/sessions?notStatus=CANCELED' % id_club, headers=self.auth_headers_coach).json
+        # FIXME: this is serious stuff
         assert d_output['total'] == 2, d_output
         assert self.__has_keys(
-            ['id', 'name', 'sessionType', 'status', 'course', 'participationCount', 'startDate', 'endDate'],
+            ['id', 'name', 'sessionType', 'status', 'course', 'participationCount', 'startDate', 'endDate','created'],
             d_output['results'][0]), d_output['results'][0]
 
         # trainer
@@ -413,13 +423,13 @@ class APITestCases(unittest.TestCase):
         d_output = self.app.get('/api/trainee/clubs/current/sessions', headers=self.auth_headers_trainee).json
         assert self.__has_keys(
             ['id', 'name', 'sessionType', 'status', 'participationCount', 'maxScore', 'courseId', 'courseName',
-             'weekNo', 'dayNo', 'participated'],
+             'weekNo', 'dayNo', 'participated', 'created'],
             d_output['results'][0])
 
         d_output = self.app.get('/api/trainee/courses/%s/sessions' % id_course,
                                 headers=self.auth_headers_trainee).json
         session_response_scheduled_trainee = ['id', 'name', 'status', 'participationCount',
-                   'sessionType','weekNo', 'dayNo']
+                                              'sessionType', 'weekNo', 'dayNo']
         assert self.__has_keys(session_response_scheduled_trainee, d_output['results'][0]), d_output
 
 
@@ -458,7 +468,7 @@ class APITestCases(unittest.TestCase):
         self.app.post_json('/api/coach/courses/%s/subscriptions' % id_course, d_input,
                            headers=self.auth_headers_coach)
 
-        d_output = self.app.get('/api/coach/courses/%s/subscribers' % id_course, headers=self.auth_headers_coach).json
+        d_output = self.app.get('/api/coach/courses/%s/subscriptions' % id_course, headers=self.auth_headers_coach).json
         assert d_output['total'] == 1, d_output
         assert d_output['results'][0]['user']['id'] == self.user.id, d_output
         assert self.__has_keys(['id', 'name', 'picture', 'nickname'], d_output['results'][0]['user'])
@@ -466,12 +476,11 @@ class APITestCases(unittest.TestCase):
 
         # trainee (not used?)
         # self._trainee_course(id_course)
-        d_output = self.app.get('/api/trainee/courses/%s/subscribers' % id_course, headers=self.auth_headers_trainee).json
+        d_output = self.app.get('/api/trainee/courses/%s/subscribers' % id_course,
+                                headers=self.auth_headers_trainee).json
         assert d_output['total'] == 1, d_output
         assert d_output['results'][0]['id'] == self.user.id, d_output
-        assert self.__has_keys(['id', 'avatar', 'nickname'], d_output['results'][0]),d_output
-
-
+        assert self.__has_keys(['id', 'avatar', 'nickname'], d_output['results'][0]), d_output
 
         d_output = self.app.get('/api/coach/subscriptions/%s' % id_observation, headers=self.auth_headers_coach).json
         assert self.__has_keys(['id', 'user', 'startDate', 'observations', 'disabledExercises', 'profileLevel'],
@@ -540,7 +549,7 @@ class APITestCases(unittest.TestCase):
         self.app.post_json('/api/coach/activities/%s/levels' % id_activity, d_input, headers=self.auth_headers_coach)
 
         d_output = self.app.get('/api/coach/activities/%s' % id_activity, headers=self.auth_headers_coach).json
-        assert self.__has_keys(['id', 'name', 'createdFor', 'levels', 'indicators'], d_output)
+        assert self.__has_keys(['id', 'name', 'createdFor', 'levels', 'indicators','created'], d_output)
         assert d_output['levels'][0]['name'] == "level test", d_output['levels']
         assert d_output['levels'][0]['levelNumber'] == 1, d_output['levels']
         # alter the level
@@ -564,7 +573,7 @@ class APITestCases(unittest.TestCase):
         d_output = self.app.post_json('/api/coach/courses/%s/sessions' % id_course, d_input,
                                       headers=self.auth_headers_coach).json
         id_session = d_output['id']
-        d_input = dict(activities=[id_activity])
+        d_input = dict(activities=[dict(id=id_activity)])
         d_output = self.app.put_json('/api/coach/sessions/%s' % id_session, d_input,
                                      headers=self.auth_headers_coach).json
         d_output = self.app.get('/api/coach/sessions/%s' % id_session, d_input,

@@ -3,7 +3,6 @@ import json
 from google.appengine.ext.deferred import deferred
 
 from gaebasepy.http_codes import HttpCreated
-
 from tasks import sync_user
 
 
@@ -116,7 +115,7 @@ def trainee_club_list_user(req):
 
     List of the clubs of the current user
     """
-    req.member = True
+    req.member = 'true'
     return trainee_club_list(req)
 
 
@@ -129,7 +128,9 @@ def trainee_club_list(req):
     """
     # check if there's the filter
     j_req = json_from_paginated_request(req, (('member', None),))
-    user_filter = bool(j_req['member'])
+    if hasattr(req, 'member'):
+        j_req['member'] = req.member
+    user_filter = j_req['member'] == 'true'
     page = int(j_req['page'])
     size = int(j_req['size'])
 
