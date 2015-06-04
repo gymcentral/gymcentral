@@ -3,6 +3,7 @@ import logging.config
 
 from google.appengine.ext import deferred
 from google.appengine.ext.ndb.key import Key
+from google.net.proto.ProtocolBuffer import ProtocolBufferDecodeError
 
 from models import Observation
 from tasks import sync_user
@@ -16,10 +17,13 @@ from app import app
 from api_db_utils import APIDB
 from auth import user_has_role
 from gaebasepy.auth import user_required, GCAuth
-from gaebasepy.exceptions import BadParameters, AuthenticationError
+from gaebasepy.exceptions import BadParameters, AuthenticationError, BadRequest
 from gaebasepy.gc_utils import sanitize_json, sanitize_list, json_from_paginated_request, \
     json_from_request
 from gaebasepy.http_codes import HttpEmpty, HttpCreated
+from google.appengine.api import search
+from google.appengine.ext import ndb
+from google.appengine.ext.ndb.key import Key
 
 
 APP_COACH = "api/coach"
@@ -37,14 +41,26 @@ def coach_profile(req):
     Profile of the current user |ul|
     """
     out = ['id', 'name', 'nickname', 'gender', 'picture', 'avatar', 'birthday', 'country', 'city', 'language',
-           'email', 'phone', 'memberships']
+           'email', 'phone', 
+           # 'memberships',
+           'owner_club']
     if req.method == "GET":
         j_user = req.user.to_dict()
-        j_user['memberships'] = sanitize_list(APIDB.get_user_member_of_type(req.user, ['OWNER', 'TRAINER']),
-                                              ['id', 'name', 'description'])
+
+        # j_user['memberships'] = sanitize_list(APIDB.get_user_member_of_type(req.user, ['OWNER', 'TRAINER']),
+                                              # ['id', 'name', 'description'])
+        if 'owner_club' not in j_user:
+            j_user['owner_club']=None
         return sanitize_json(j_user, out)
     elif req.method == "PUT":
-        j_req = json_from_request(req, accept_all=True)
+        j_req = json_from_request(req, optional_props=['name', 'nickname', 'gender', 'picture', 'avatar', 'birthday',
+                                                       'country', 'city', 'language',
+                                                       'email', 'phone', 'ownerClub'])
+        if 'owner_club' in j_req:
+            membership = APIDB.get_user_club_role(req.user, Key(urlsafe=j_req['owner_club']))
+            if membership != "OWNER" and membership != "TRAINER":
+                raise BadRequest("It seems that you want to activate a club that you are not owner or trainer of")
+
         update, user = APIDB.update_user(req.user, **j_req)
         j_user = user.to_dict()
         j_user['memberships'] = sanitize_list(APIDB.get_user_member_of_type(req.user, ['OWNER', 'TRAINER']),
@@ -279,8 +295,15 @@ def coach_course_list(req, uskey_club):
         j_course = course.to_dict()
         j_course["trainers"] = sanitize_list(APIDB.get_course_trainers(course), allowed=["id", "name", "picture"])
         j_course["subscriber_count"] = APIDB.get_course_subscribers(course, count_only=True)
-        j_course["session_count"] = APIDB.get_course_sessions(course, count_only=True)
-        allowed = ["id", "name", "description", "trainers", "subscriber_count", "session_count", "course_type"]
+        sessions_total = APIDB.get_course_sessions(course)
+        j_course['session_count'] = len(sessions_total)
+        sessions_finished = [session for session  in sessions_total if session.status=="FINISHED"]
+        # logger.debug("%s %s %s", len(sessions_total), len(sessions_finished),long(sessions_finished)/long(sessions_total) * 100 )
+        if len(sessions_total)>0:
+            j_course['completeness'] = long(len(sessions_finished))/long(len(sessions_total)) * 100
+        else:
+            j_course['completeness'] = 0
+        allowed = ["id", "name", "description", "trainers", "subscriber_count", "session_count", "course_type","completeness"]
         if course.course_type == "SCHEDULED":
             allowed += ["start_date", "end_date"]
         elif course.course_type == "PROGRAM":
@@ -335,9 +358,17 @@ def coach_course_detail(req, uskey_course):
     j_course = course.to_dict()
     j_course['trainers'] = sanitize_list(APIDB.get_course_trainers(course), allowed=['id', 'name', 'picture'])
     j_course['subscriber_count'] = APIDB.get_course_subscribers(course, count_only=True)
-    j_course['session_count'] = APIDB.get_course_sessions(course, count_only=True)
+    # the filter on status does not work, this is an "expensive" workaround
+    sessions_total = APIDB.get_course_sessions(course)
+    j_course['session_count'] = len(sessions_total)
+    sessions_finished = [session for session  in sessions_total if session.status=="FINISHED"]
+    # logger.debug("%s %s %s", len(sessions_total), len(sessions_finished),long(sessions_finished)/long(sessions_total) * 100 )
+    if len(sessions_total)>0:
+        j_course['completeness'] = long(len(sessions_finished))/long(len(sessions_total)) * 100
+    else:
+        j_course['completeness'] = 0
     return sanitize_json(j_course, ['id', 'name', 'description', 'start_date', 'end_date', 'duration',
-                                    'trainers', 'course_type', 'subscriber_count', 'session_count'],
+                                    'trainers', 'course_type', 'subscriber_count', 'session_count','completeness'],
                          except_on_missing=False)
 
 
@@ -962,3 +993,30 @@ def coach_performance_detail(req, uskey_session):
     return sanitize_json(res,
                          ['id', 'activity', 'indicators', 'max_completeness', 'completeness', 'record_date', 'level'])
 
+
+
+@app.route("/%s/search/users" % APP_COACH, methods=('GET',))
+@user_required
+def search_user(req):
+    """
+    Search for users based on the query
+    it's paginated, but the total is not returned in the response.
+
+    :param req:
+    :return:
+    """
+    j_req = json_from_paginated_request(req, ('query',))
+    query_string = j_req['query']
+    size = int(j_req['size'])
+    if size == -1:
+        size = 20
+    if size > 100:
+        size = 100
+    offset = size * (int(j_req['page']))
+    if not query_string:
+        raise BadParameters("Missing 'query' parameter")
+    index = search.Index(name="users")
+    query_options = search.QueryOptions(ids_only=True, offset=offset, limit=size)
+    query = search.Query(query_string=query_string, options=query_options)
+    results = [Key(urlsafe=r.doc_id) for r in index.search(query)]
+    return dict(results=sanitize_list(ndb.get_multi(results), ['id', 'nickname', 'name', 'avatar','picture']))

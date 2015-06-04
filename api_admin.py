@@ -6,9 +6,9 @@ list of functions that are mapped behind ``/app/admin/``
 import json
 
 import webapp2
-
-from gaebasepy.auth import GCAuth
-from gaebasepy.exceptions import AuthenticationError
+from gaebasepy.auth import GCAuth, user_required
+from gaebasepy.exceptions import AuthenticationError, BadParameters
+from gaebasepy.gc_utils import json_from_paginated_request, sanitize_list
 from tasks import sync_user
 
 
@@ -24,6 +24,9 @@ import cfg
 from models import User
 
 from app import app
+
+
+
 
 APP_ADMIN = "api/admin"
 
@@ -55,7 +58,7 @@ def auth(req, provider, token):  # pragma: no cover
     if error:
         raise AuthenticationError(error)
     # check if user exists..
-    logging.debug("%s %s %s" % (d_user, token, error))
+    # logging.debug("%s %s %s" % (d_user, token, error))
     auth_id = str(provider) + ":" + d_user['id']
     user = User.get_by_auth_id(auth_id)
     email = d_user['email']
@@ -132,17 +135,20 @@ def delete_auth(req):  # pragma: no cover
         ndb.delete_multi(keys)
 
 
+
+
+
 # @app.route("/%s/init-db" % APP_ADMIN, methods=('GET',))
 # def init_db(req):  # pragma: no cover
 # # IGNORE
 # trainer = User.query(ndb.GenericProperty('email') == "trainer@test.com").get()
-#     if not trainer:
-#         trainer = APIDB.create_user("own:" + "trainer", nickname="trainer", name="trainer", gender="m",
-#                                     avatar="..",
-#                                     birthday=datetime.datetime.now(), country='Italy', city='TN', language='en',
-#                                     picture='..', email='trainer@test.com', phone='2313213', active_club=None,
-#                                     unique_properties=['email'])
-#     club = Club.query(Club.name == "test").get()
+# if not trainer:
+# trainer = APIDB.create_user("own:" + "trainer", nickname="trainer", name="trainer", gender="m",
+# avatar="..",
+# birthday=datetime.datetime.now(), country='Italy', city='TN', language='en',
+# picture='..', email='trainer@test.com', phone='2313213', active_club=None,
+# unique_properties=['email'])
+# club = Club.query(Club.name == "test").get()
 #     if not club:
 #         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
 #                                  training_type=["balance", "stability"], tags=["test", "trento"])

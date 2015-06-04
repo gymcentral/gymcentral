@@ -87,17 +87,17 @@ class User(GCUser):
         del d['password']
         return d
 
-    # def _post_put_hook(self, future):
-    #     # create the search doc
-    #     user_doc = search.Document(
-    #         doc_id=self.id,
-    #         fields=[
-    #             search.TextField(name='name', value=self.name),
-    #             search.TextField(name='email', value=self.email),
-    #             search.TextField(name='nickname', value=self.nickname)
-    #         ])
-    #     index = search.Index(name="users")
-    #     index.put(user_doc)
+    def _post_put_hook(self, future):
+        # create the search doc
+        user_doc = search.Document(
+            doc_id=self.id,
+            fields=[
+                search.TextField(name='name', value=self.name),
+                search.TextField(name='email', value=self.email),
+                search.TextField(name='nickname', value=self.nickname)
+            ])
+        index = search.Index(name="users")
+        index.put(user_doc)
 
 
 class Course(GCModel):
@@ -281,19 +281,19 @@ class Club(GCModel):
     def owners(self):
         return self.all_memberships.filter(ClubMembership.membership_type == "OWNER")
 
-    # def _post_put_hook(self, future):
-    #     # create the search doc
-    #     club_doc = search.Document(
-    #         doc_id=self.id,
-    #         fields=[
-    #             search.TextField(name='name', value=self.name),
-    #             search.TextField(name='email', value=self.email),
-    #             search.TextField(name='description', value=self.description),
-    #             search.TextField(name='tags', value=" ".join(self.tags))
-    #         ])
-    #
-    #     index = search.Index(name="clubs")
-    #     index.put(club_doc)
+    def _post_put_hook(self, future):
+        # create the search doc
+        club_doc = search.Document(
+            doc_id=self.id,
+            fields=[
+                search.TextField(name='name', value=self.name),
+                search.TextField(name='email', value=self.email),
+                search.TextField(name='description', value=self.description),
+                search.TextField(name='tags', value=" ".join(self.tags))
+            ])
+
+        index = search.Index(name="clubs")
+        index.put(club_doc)
         # these methods are not used anymore, there's the query()
         # @classmethod
         # def get_by_email(cls, email, **kwargs):
@@ -434,6 +434,7 @@ class Source(GCModel):
     sd_link = ndb.StringProperty()
     mobile_link = ndb.StringProperty()
     download_link = ndb.StringProperty()
+    instruction_link = ndb.StringProperty()
     http_live_streaming = ndb.StringProperty()
     media_length = ndb.FloatProperty()
 

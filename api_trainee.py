@@ -1,6 +1,7 @@
 import json
 
 from google.appengine.ext.deferred import deferred
+from google.appengine.ext.ndb.key import Key
 
 from gaebasepy.http_codes import HttpCreated
 from tasks import sync_user
@@ -19,6 +20,9 @@ from gaebasepy.auth import GCAuth, user_required
 from gaebasepy.exceptions import AuthenticationError, BadParameters, NotFoundException, BadRequest
 from gaebasepy.gc_utils import sanitize_json, sanitize_list, json_from_paginated_request, \
     json_from_request
+from google.appengine.api import search
+from google.appengine.ext import ndb
+from google.appengine.ext.ndb.key import Key
 
 # ---------------------------------- TRAINEE ---------------------------------------
 
@@ -101,6 +105,11 @@ def trainee_profile(req):
                                   optional_props=['name', 'nickname', 'gender', 'picture', 'avatar', 'birthday',
                                                   'country', 'city', 'language',
                                                   'email', 'phone', 'activeClub'])
+        if 'active_club' in j_req:
+            membership = APIDB.get_user_club_role(req.user, Key(urlsafe=j_req['active_club']))
+            print membership
+            if membership != "MEMBER":
+                raise BadRequest("It seems that you want to activate a club that you are not member of")
         update, user = APIDB.update_user(req.user, **j_req)
         s_token = GCAuth.auth_user_token(user)
         deferred.defer(sync_user, user, s_token)
@@ -490,3 +499,30 @@ def trainee_course_performances(req, uskey_course):
         participation = APIDB.get_participation(req.user, session)
         sum += float(participation.max_completeness)
     return dict(score=sum / tot)
+
+
+@app.route("/%s/search/users" % APP_TRAINEE, methods=('GET',))
+@user_required
+def search_user(req):
+    """
+    Search for users based on the query
+    it's paginated, but the total is not returned in the response.
+    
+    :param req:
+    :return:
+    """
+    j_req = json_from_paginated_request(req, ('query',))
+    query_string = j_req['query']
+    size = int(j_req['size'])
+    if size == -1:
+        size = 20
+    if size > 100:
+        size = 100
+    offset = size * (int(j_req['page']))
+    if not query_string:
+        raise BadParameters("Missing 'query' parameter")
+    index = search.Index(name="users")
+    query_options = search.QueryOptions(ids_only=True, offset=offset, limit=size)
+    query = search.Query(query_string=query_string, options=query_options)
+    results = [Key(urlsafe=r.doc_id) for r in index.search(query)]
+    return dict(results=sanitize_list(ndb.get_multi(results), ['id', 'nickname', 'name', 'avatar','picture']))

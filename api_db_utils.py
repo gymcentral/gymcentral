@@ -57,8 +57,8 @@ class APIDB():
         """
         created, ret = cls.model_user.create_user(auth_id, unique_properties, **user_values)
         if not created:
-            # logging.error("Error with user %s", ret)
-            raise ServerError()
+            logging.error("Error with user %s", ret)
+            raise ServerError(ret)
         return ret
 
     @classmethod
@@ -263,7 +263,7 @@ class APIDB():
         :return: list of users
         """
         kwargs['projection'] = 'member'
-        query = club.all_memberships.filter(cls.model_club_user.status == status)
+        query = club.all_memberships.fr(cls.model_club_user.status == status)
         return cls.__get(query, **kwargs)
 
     @classmethod
@@ -667,7 +667,10 @@ class APIDB():
         if session_type:
             sessions = sessions.filter(cls.model_session.session_type == session_type)
         if status:
-            sessions = sessions.filter(cls.model_session.status == status)
+            # https://cloud.google.com/appengine/docs/python/ndb/properties#computed
+            # computed property not calculade during query
+            raise BadParameters("Filter on status is not working")
+            # sessions = sessions.filter(cls.model_session.status == status)
         # if not date_to or date_from:
         # # in case there's no inequality, then we order
         # sessions.order(GCModel.created)
