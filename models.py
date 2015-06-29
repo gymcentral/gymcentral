@@ -351,6 +351,17 @@ class Session(GCModel):
             except Exception:
                 raise BadValueError("Profile must be a valid json")
 
+    @property
+    def max_level(self):
+        if not self.profile:
+            # if there's no profile, then get the levels of the first activity
+            if not self.list_exercises:
+                return 0
+            else:
+                return len(self.list_exercises[0].get().levels)
+        else:
+            return len(self.profile)
+    
     def is_valid(self):
         # check for the update/creation.
         course = self.course.get()
@@ -384,6 +395,7 @@ class Session(GCModel):
         result['activities'] = self.get_exercises
         result['on_before'] = self.get_on_before
         result['on_after'] = self.get_on_after
+        result['max_level'] = self.max_level
 
         del result['canceled']
         if self.session_type != "SINGLE":
@@ -597,6 +609,9 @@ class Performance(GCModelMtoMNoRep):
     def to_dict(self):
         d = super(Performance, self).to_dict()
         d['record_date'] = [date_to_js_timestamp(data) for data in self.record_date]
+        d['indicators'] = self.indicators
+        d['max_completeness']=self.max_completeness
+        del d['indicator_list']
         return d
 
 
@@ -606,16 +621,17 @@ class PossibleAnswer(GCModel):
     text = ndb.StringProperty()
     img = ndb.StringProperty()
     value = ndb.StringProperty()
-    answer_type = ndb.StringProperty(choices=["TEXT", "MULTIPLECHOICE", "CHECKBOXES"], default="TEXT")
+    
 
 
 class Indicator(GCModel):
     name = ndb.StringProperty(required=True)
-    indicator_type = ndb.StringProperty()
+    indicator_type = ndb.StringProperty(choices=["INTEGER", "FLOAT", "STRING","BOOLEAN"], default="INTEGER")
     description = ndb.StringProperty(required=True)
     possible_answers = ndb.StructuredProperty(PossibleAnswer, repeated=True)
     required = ndb.BooleanProperty(default=True)
     created_for = ndb.KeyProperty(kind='Club', required=True)
+    answer_type = ndb.StringProperty(choices=["TEXT", "MULTIPLECHOICE", "CHECKBOXES"], default="TEXT")
 
 
 class Exercise(GCModel):

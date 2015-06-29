@@ -5,7 +5,7 @@ import cfg
 from gaebasepy.auth import GCAuth
 from gaebasepy.exceptions import AuthenticationError, NotFoundException
 from models import Club, ClubMembership, CourseSubscription, CourseTrainers, Course, Session, Exercise, Indicator, \
-    Detail
+    Detail, Participation
 
 
 # this beacuse the decorator is needed to create the docs but not to run the project
@@ -101,6 +101,8 @@ def user_has_role(roles):
                     __course_role(req.user, obj.course, roles)
                 elif isinstance(obj, (Exercise, Indicator, Detail)):
                     __club_role(req.user, obj.created_for, roles)
+                elif isinstance(obj, Participation):
+                    __course_role(req.user, obj.session.get().course, roles)
                 else:
                     raise AuthenticationError("Object %s not known" % type(obj))
                 return handler(req, *args, **kwargs)

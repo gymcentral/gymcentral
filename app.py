@@ -46,7 +46,7 @@ class GCApp(WSGIApp):
                 raise AuthenticationError("Your key %s is not valid" % app_id)
         elif "coach" in request.url:
             if not app_id in cfg.APPIDS_COACH:
-                raise AuthenticationError()
+                raise AuthenticationError("Your key %s is not valid" % app_id)
         kwargs = router.match(request)[2]
         if kwargs:
             if len(kwargs) >= 1:

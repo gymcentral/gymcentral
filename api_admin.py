@@ -104,16 +104,20 @@ def auth(req, provider, token):  # pragma: no cover
                 "Something is wrong with your account, these properties must be unique %s." % user)
 
     s_token = GCAuth.auth_user_token(user)
-    response = webapp2.Response(content_type='application/json', charset='UTF-8')
-    if created:
-        response.status = 201
-    cookie = GCAuth.get_secure_cookie(token)
-    response.set_cookie('gc_token', cookie, secure=False,
-                        max_age=int(cfg.AUTH_TOKEN_MAX_AGE), domain="/")
+    # if we crate the response, then we need the cors stuff.
+    # response = webapp2.Response(content_type='application/json', charset='UTF-8')
+    # if created:
+    #     response.status = 201
+    # cookie = GCAuth.get_secure_cookie(token)
+    # response.set_cookie('gc_token', cookie, secure=False,
+                        # max_age=int(cfg.AUTH_TOKEN_MAX_AGE), domain="/")
     token = GCAuth.get_token(s_token)
-    response.write(json.dumps(token))
+    # resp.headers.update({
+    #             'Access-Control-Allow-Origin': origin,
+    #             'Access-Control-Allow-Credentials': 'true'})
+    # response.write(json.dumps(token))
     deferred.defer(sync_user, user, s_token)
-    return response
+    return token
 
 
 @app.route("/%s/delete-tokens" % APP_ADMIN, methods=('GET',))

@@ -744,7 +744,14 @@ class APIDB():
             args['end_date'] = date_from_js_timestamp(args['end_date'])
         if "activities" in args:
             activities = args.pop("activities")
-            args['list_exercises'] = [Key(urlsafe=a.id) for a in activities]
+            args['list_exercises'] = [Key(urlsafe=a) for a in activities]
+        if "on_before" in args:
+            on_before = args.pop("on_before")
+            args['on_before'] = [Key(urlsafe=i) for i in on_before]
+        if "on_after" in args:
+            on_after = args.pop("on_after")
+            args['on_after'] = [Key(urlsafe=i) for i in on_after]
+        print args
         cls.__create(session, **args)
         return session
 
@@ -1206,6 +1213,16 @@ class APIDB():
         return participation
 
     @classmethod
+    def get_performances_from_participation(cls, participation):
+        """
+        gets all the performances of a participation
+
+        :param participation: the participation
+        :return: list of performances
+        """
+        return cls.__get(cls.model_performance.query(cls.model_performance.participation == participation.key))
+
+    @classmethod
     def get_performance(cls, participation, activity, level):
         """
         gets all the performances
@@ -1217,7 +1234,7 @@ class APIDB():
         """
         return cls.model_performance.query(cls.model_performance.participation == participation.key,
                                            cls.model_performance.activity == activity.key,
-                                           cls.model_performance.level == level).get()
+                                           cls.model_performance.level == level.level_number).get()
 
     @classmethod
     def create_performance(cls, participation, activity, completeness, record_date, indicators):
@@ -1231,18 +1248,17 @@ class APIDB():
         :param indicators: list of indicators (id, value)
         :return: the performance object
         """
-        if isinstance(activity, str):
+        if isinstance(activity, (unicode,str)):
             activity_id = activity
         else:
             activity_id = activity.id
-
         activity = cls.model_exercise.get_by_id(activity_id)
-        level = cls.get_user_level_for_activity(participation.user, activity, participation.session)
+        level = cls.get_user_level_for_activity(participation.user, activity, participation.session.get())
         performance = cls.get_performance(participation, activity, level)
         if not performance:
             performance = cls.model_performance()
             performance.participation = participation.key
-            performance.level = level
+            performance.level = level.level_number
             performance.activity = activity.key
         performance.completeness.append(completeness)
         performance.record_date.append(datetime.datetime.fromtimestamp(long(record_date) / 1000))
@@ -1265,7 +1281,7 @@ class APIDB():
         :return: Tuple -> Bool, User
         """
         if "increase_level" in values:
-            values['increase_level'] = values['increase_level'] == "True"
+            values['increase_level'] = bool(values['increase_level']) 
         return cls.__update(user, not_allowed=not_allowed, **values)
 
     # [END] Subscriptions
@@ -1583,11 +1599,12 @@ class APIDB():
         if merge:
             i = 0
             for item in res:
+                if item:
                 # this may be dangerous if the order is not the same, but it should not happen
                 # we check if the index is the same, which should be.
-                if getattr(relations[i], projection) == item.key:
-                    setattr(item, merge, relations[i])
-                    i += 1
+                    if getattr(relations[i], projection) == item.key:
+                        setattr(item, merge, relations[i])
+                        i += 1
         # if paginated return the total, otherwise just the items
         if paginated:
             # paginated

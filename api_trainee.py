@@ -1,7 +1,6 @@
 import json
 
 from google.appengine.ext.deferred import deferred
-from google.appengine.ext.ndb.key import Key
 
 from gaebasepy.http_codes import HttpCreated
 from tasks import sync_user
@@ -99,7 +98,7 @@ def trainee_profile(req):
     out = ['id', 'name', 'nickname', 'gender', 'picture', 'avatar', 'birthday', 'country', 'city', 'language',
            'email', 'phone', 'active_club']
     if req.method == "GET":
-        return sanitize_json(req.user, out)
+        return sanitize_json(req.user, out,except_on_missing=False)
     elif req.method == "PUT":
         j_req = json_from_request(req,
                                   optional_props=['name', 'nickname', 'gender', 'picture', 'avatar', 'birthday',
@@ -113,7 +112,7 @@ def trainee_profile(req):
         update, user = APIDB.update_user(req.user, **j_req)
         s_token = GCAuth.auth_user_token(user)
         deferred.defer(sync_user, user, s_token)
-        return sanitize_json(user, out)
+        return sanitize_json(user, out,except_on_missing=False)
 
 
 @app.route('/%s/users/current/clubs' % APP_TRAINEE, methods=('GET',))
@@ -475,9 +474,9 @@ def trainee_session_performance(req, uskey_session):
     # check the data from here. probably the particaipation goes into the creation
     participation = APIDB.create_participation(req.user, req.model, **participation)
     for performance in performances:
-        performance = json_from_request(json.dumps(performance),
-                                        mandatory_props=['recordDate', 'activityId', 'completeness', 'indicators'])
-        prformance = APIDB.create_performance(req.user, participation, **performance)
+        print performance
+        APIDB.create_performance(participation, performance['activityId'], performance['completeness'],
+                                 performance['recordDate'], performance['indicators'])
     return HttpCreated()
 
 
@@ -525,4 +524,4 @@ def search_user(req):
     query_options = search.QueryOptions(ids_only=True, offset=offset, limit=size)
     query = search.Query(query_string=query_string, options=query_options)
     results = [Key(urlsafe=r.doc_id) for r in index.search(query)]
-    return dict(results=sanitize_list(ndb.get_multi(results), ['id', 'nickname', 'name', 'avatar','picture']))
+    return dict(results=sanitize_list(ndb.get_multi(results), ['id', 'nickname', 'name', 'avatar', 'picture']))

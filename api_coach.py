@@ -2,8 +2,6 @@ import logging
 import logging.config
 
 from google.appengine.ext import deferred
-from google.appengine.ext.ndb.key import Key
-from google.net.proto.ProtocolBuffer import ProtocolBufferDecodeError
 
 from models import Observation
 from tasks import sync_user
@@ -41,17 +39,17 @@ def coach_profile(req):
     Profile of the current user |ul|
     """
     out = ['id', 'name', 'nickname', 'gender', 'picture', 'avatar', 'birthday', 'country', 'city', 'language',
-           'email', 'phone', 
+           'email', 'phone',
            # 'memberships',
            'owner_club']
     if req.method == "GET":
         j_user = req.user.to_dict()
 
         # j_user['memberships'] = sanitize_list(APIDB.get_user_member_of_type(req.user, ['OWNER', 'TRAINER']),
-                                              # ['id', 'name', 'description'])
+        # ['id', 'name', 'description'])
         if 'owner_club' not in j_user:
-            j_user['owner_club']=None
-        return sanitize_json(j_user, out)
+            j_user['owner_club'] = None
+        return sanitize_json(j_user, out, except_on_missing=False)
     elif req.method == "PUT":
         j_req = json_from_request(req, optional_props=['name', 'nickname', 'gender', 'picture', 'avatar', 'birthday',
                                                        'country', 'city', 'language',
@@ -297,13 +295,14 @@ def coach_course_list(req, uskey_club):
         j_course["subscriber_count"] = APIDB.get_course_subscribers(course, count_only=True)
         sessions_total = APIDB.get_course_sessions(course)
         j_course['session_count'] = len(sessions_total)
-        sessions_finished = [session for session  in sessions_total if session.status=="FINISHED"]
+        sessions_finished = [session for session in sessions_total if session.status == "FINISHED"]
         # logger.debug("%s %s %s", len(sessions_total), len(sessions_finished),long(sessions_finished)/long(sessions_total) * 100 )
-        if len(sessions_total)>0:
-            j_course['completeness'] = long(len(sessions_finished))/long(len(sessions_total)) * 100
+        if len(sessions_total) > 0:
+            j_course['completeness'] = long(len(sessions_finished)) / long(len(sessions_total)) * 100
         else:
             j_course['completeness'] = 0
-        allowed = ["id", "name", "description", "trainers", "subscriber_count", "session_count", "course_type","completeness"]
+        allowed = ["id", "name", "description", "trainers", "subscriber_count", "session_count", "course_type",
+                   "completeness"]
         if course.course_type == "SCHEDULED":
             allowed += ["start_date", "end_date"]
         elif course.course_type == "PROGRAM":
@@ -361,14 +360,14 @@ def coach_course_detail(req, uskey_course):
     # the filter on status does not work, this is an "expensive" workaround
     sessions_total = APIDB.get_course_sessions(course)
     j_course['session_count'] = len(sessions_total)
-    sessions_finished = [session for session  in sessions_total if session.status=="FINISHED"]
+    sessions_finished = [session for session in sessions_total if session.status == "FINISHED"]
     # logger.debug("%s %s %s", len(sessions_total), len(sessions_finished),long(sessions_finished)/long(sessions_total) * 100 )
-    if len(sessions_total)>0:
-        j_course['completeness'] = long(len(sessions_finished))/long(len(sessions_total)) * 100
+    if len(sessions_total) > 0:
+        j_course['completeness'] = long(len(sessions_finished)) / long(len(sessions_total)) * 100
     else:
         j_course['completeness'] = 0
     return sanitize_json(j_course, ['id', 'name', 'description', 'start_date', 'end_date', 'duration',
-                                    'trainers', 'course_type', 'subscriber_count', 'session_count','completeness'],
+                                    'trainers', 'course_type', 'subscriber_count', 'session_count', 'completeness'],
                          except_on_missing=False)
 
 
@@ -440,11 +439,17 @@ def coach_course_session_list(req, uskey_course):
         res_obj = session.to_dict()
         res_obj['status'] = session.status
         # res_obj['participated'] = APIDB.user_participated_in_session(req.user, session)
-        res_obj['participation_count'] = APIDB.get_session_participations(session, count_only=True)
+        session_participations=APIDB.get_session_participations(session, count_only=True)
+        course_subscribers = APIDB.get_course_subscribers(course, count_only=True)
+        res_obj['participation_count'] = session_participations
+        if course_subscribers:
+            res_obj['participation_percent'] = 100*(float(session_participations)/float(course_subscribers))
+        else:
+            res_obj['participation_percent'] = 0
         # res_obj['actnoivity_count'] = session.activity_count
         # TODO: check the 'url' here
         allowed = ['id', 'name', 'status', 'participation_count',
-                   'session_type']
+                   'session_type','participation_percent']
         course_type = session.course.get().course_type
         if course_type == "SCHEDULED":
             allowed += ["start_date", "end_date"]
@@ -482,7 +487,7 @@ def coach_session_detail(req, uskey_session):
     """
     session = req.model
     j_session = session.to_dict()
-    j_session['participation_count'] = APIDB.user_participation_details(req.user, session, count_only=True)
+    j_session['participation_count'] = APIDB.get_session_participations(session, count_only=True)
     j_session['status'] = session.status
     j_session['on_before'] = sanitize_list(APIDB.get_session_indicator_before(session),
                                            allowed=["name", "indicator_type", "description", "possible_answers",
@@ -494,14 +499,17 @@ def coach_session_detail(req, uskey_session):
     res_list = []
     for activity in activities:
         j_activity = activity.to_dict()
-        j_activity['level_count'] = len(activity.levels)
+        level_count = len(activity.levels)
+        j_activity['level_count'] = level_count
+
         # this is already a json, see docs in the model
         res_list.append(j_activity)
     j_session['activities'] = sanitize_list(res_list,
                                             allowed=['id', 'name', 'level_count'])
+    j_session['max_level'] = session.max_level
     # there should be 'type',x
     allowed = ['id', 'name', 'status', 'participation_count',
-               'activities', 'session_type', 'profile', 'meta_data', 'on_before', 'on_after', 'created']
+               'activities', 'session_type', 'profile', 'meta_data', 'on_before', 'on_after', 'created', 'max_level']
     course_type = session.course.get().course_type
     if session.session_type == "SINGLE":
         allowed += ['url']
@@ -564,15 +572,18 @@ def coach_session_participations(req, uskey_session):
     res_list = []
     for participation in participations:
         res = participation.to_dict()
-        res['user'] = sanitize_json(participation.user, ['name', 'id', 'avatar', 'picture'])
+        res['user'] = sanitize_json(participation.user.get(), ['name', 'id', 'avatar', 'picture'])
         subscription = APIDB.get_course_subscription(session.course, participation.user)
+        res['subscription_id'] = subscription.id
         res['current_level'] = subscription.profile_level
+        res['level'] = participation.level
         res['level_up'] = subscription.increase_level
         res['indicators'] = participation.indicators
         res['max_completeness'] = participation.max_completeness
         res['participation_count'] = participation.participation_count
-        res_list.append(sanitize_json(res, ['id', 'user', 'participation', 'level_up', 'current_level', 'indicators',
-                                            'max_completeness', 'completeness', 'participation_count', 'time']))
+        res_list.append(sanitize_json(res, ['id', 'user', 'level_up', 'current_level', 'indicators',
+                                            'max_completeness', 'completeness', 'participation_count', 'time',
+                                            'level','subscription_id']))
     return dict(results=res_list, total=total)
 
 
@@ -650,7 +661,7 @@ def coach_course_subscribers(req, uskey_course):
         res_subscriber = sanitize_json(subscriber, allowed=['id', 'name', 'picture', 'nickname'])
         # get the "merged" field and append it to the main object.
         res_subscription = sanitize_json(subscriber.subscription,
-                                         allowed=['id'])
+                                         allowed=['id', 'profile_level'])
         res_subscription['user'] = res_subscriber
         res.append(res_subscription)
     return dict(results=res, total=total)
@@ -660,7 +671,7 @@ def coach_course_subscribers(req, uskey_course):
 @user_has_role(["TRAINER", "OWNER"])
 def coach_course_subscription_create(req, uskey_course):
     """
-    ``GET`` @ |ca| +  ``/courses/<uskey_course>/subscriptions``
+    ``POST`` @ |ca| +  ``/courses/<uskey_course>/subscriptions``
 
     Creates a subscription for the coruse. |uroleOT|
     """
@@ -721,6 +732,18 @@ def coach_course_subscription_update(req, uskey_subscription):
     APIDB.update_subscription(subscription, ['role'], **j_req)
     return HttpEmpty()
 
+@app.route('/%s/subscriptions/<uskey_subscription>/level' % APP_COACH, methods=('PUT',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_course_subscription_update_level(req, uskey_subscription):
+    """
+    ``PUT`` @ |ca| +  ``/subscriptions/<uskey_subscription>/level``
+
+    Updates the level of a subscription. |uroleO|
+    """
+    subscription = req.model
+    j_req = json_from_request(req,mandatory_props=['profileLevel'], optional_props=['increaseLevel'])
+    APIDB.update_subscription(subscription,  **j_req)
+    return HttpEmpty()
 
 @app.route('/%s/subscriptions/<uskey_subscription>' % APP_COACH, methods=('DELETE',))
 @user_required
@@ -976,9 +999,36 @@ def coach_indicators_update(req, uskey_indicator):
     return indicator.to_dict()
 
 
+@app.route('/%s/participations/<uskey_participation>/performances' % APP_COACH, methods=('GET',))
+@user_has_role(["TRAINER", "OWNER"])
+def coach_participations_performances(req, uskey_participation):
+    """
+    ``GET`` @ |ca| +  ``/participations/<uskey_participation>/performances``
+
+    Perfomances of a participation. |uroleOT|
+    """
+    participation = req.model
+    user = participation.user.get()
+    performances = APIDB.get_performances_from_participation(participation)
+    res_list = []
+    session = participation.session.get()
+    subscription = APIDB.get_course_subscription(session.course, user)
+
+    for performance in performances:
+        res_obj = performance.to_dict()
+        activity = performance.activity.get()
+        res_obj['activity'] = sanitize_json(activity,['id','name'])
+        res_obj['indicators'] = performance.indicators
+        res_list.append(sanitize_json(res_obj,['activity','record_date', 'completeness', 'indicators','max_completeness','level']))
+    print user
+    return dict(user=sanitize_json(user,['id','name','picture']), participation=participation.id, 
+        subscription = sanitize_json(subscription,['id','profile_level']),
+        session = sanitize_json(session,['id','name','max_level']), performances=res_list)
+
+
 @app.route('/%s/performances/<uskey_perfomance>' % APP_COACH, methods=('GET',))
 @user_has_role(["TRAINER", "OWNER"])
-def coach_performance_detail(req, uskey_session):
+def coach_performance_detail(req, uskey_perfomance):
     """
     ``GET`` @ |ca| +  ``/performances/<uskey_perfomance>``
 
@@ -992,7 +1042,6 @@ def coach_performance_detail(req, uskey_session):
     res['max_completeness'] = performance.max_completeness
     return sanitize_json(res,
                          ['id', 'activity', 'indicators', 'max_completeness', 'completeness', 'record_date', 'level'])
-
 
 
 @app.route("/%s/search/users" % APP_COACH, methods=('GET',))
@@ -1019,4 +1068,4 @@ def search_user(req):
     query_options = search.QueryOptions(ids_only=True, offset=offset, limit=size)
     query = search.Query(query_string=query_string, options=query_options)
     results = [Key(urlsafe=r.doc_id) for r in index.search(query)]
-    return dict(results=sanitize_list(ndb.get_multi(results), ['id', 'nickname', 'name', 'avatar','picture']))
+    return dict(results=sanitize_list(ndb.get_multi(results), ['id', 'nickname', 'name', 'avatar', 'picture']))

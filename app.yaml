@@ -17,10 +17,6 @@ handlers:
   script: api_admin.app
   login: admin
 
-- url: /api/admin/init-db
-  script: api_admin.app
-  login: admin
-
 - url: /api/coach/.*
   script: api_coach.app
 
@@ -29,6 +25,9 @@ handlers:
 
 - url: /api/admin/.*
   script: api_admin.app
+
+- url: /api/testing/.*
+  script: api_testing.app
 
 libraries:
 - name: webapp2
