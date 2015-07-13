@@ -53,6 +53,7 @@ def auth(req):  # pragma: no cover
                                      # phone="",
                                      active_club=j_req['active_club'],
                                      owner_club=j_req['owner_club'],
+                                     sensors=[],
     )
     if not created:
         raise BadParameters("This value is incorrect: " + auth_id)

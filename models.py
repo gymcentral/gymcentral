@@ -109,6 +109,25 @@ class Course(GCModel):
     duration = ndb.IntegerProperty()
     club = ndb.KeyProperty('Club', required=True)
     is_deleted = ndb.BooleanProperty(default=False)
+    profile = ndb.JsonProperty()
+    max_level = ndb.IntegerProperty()
+
+    def _pre_put_hook(self):
+        if isinstance(self.profile, str):
+            try:
+                self.profile = json.loads(self.profile)
+            except Exception:
+                raise BadValueError("Profile must be a valid json")
+    # @property
+    # def max_level(self):
+    #     if not self.profile:
+    #         # if there's no profile, then get the levels of the first activity
+    #         if not self.list_exercises:
+    #             return 0
+    #         else:
+    #             return len(self.list_exercises[0].get().levels)
+    #     else:
+    #         return len(self.profile)
 
     @property
     def active(self):
@@ -202,8 +221,12 @@ class CourseSubscription(GCModelMtoMNoRep):
     start_date = ndb.DateTimeProperty(auto_now_add=True)
     end_date = ndb.DateTimeProperty()
 
-    # def to_dict(self):
-    # result = super(CourseSubscription, self).to_dict()
+    def to_dict(self):
+        result = super(CourseSubscription, self).to_dict()
+        course = self.course.get()
+        result['max_level']=course.max_level
+        result['profile']=course.profile
+        return result
 
 
 class ClubMembership(GCModelMtoMNoRep):
@@ -322,7 +345,6 @@ class Session(GCModel):
     course = ndb.KeyProperty(kind="Course", required=True)
     # TODO: maybe needs order. it's a list, they can just send a new list
     list_exercises = ndb.KeyProperty(kind="Exercise", repeated=True)
-    profile = ndb.JsonProperty()
     meta_data = ndb.JsonProperty()
     on_before = ndb.KeyProperty(kind='Indicator', repeated=True)
     on_after = ndb.KeyProperty(kind='Indicator', repeated=True)
@@ -344,24 +366,6 @@ class Session(GCModel):
     def get_exercises(self):
         return ndb.get_multi(self.list_exercises)
 
-    def _pre_put_hook(self):
-        if isinstance(self.profile, str):
-            try:
-                self.profile = json.loads(self.profile)
-            except Exception:
-                raise BadValueError("Profile must be a valid json")
-
-    @property
-    def max_level(self):
-        if not self.profile:
-            # if there's no profile, then get the levels of the first activity
-            if not self.list_exercises:
-                return 0
-            else:
-                return len(self.list_exercises[0].get().levels)
-        else:
-            return len(self.profile)
-    
     def is_valid(self):
         # check for the update/creation.
         course = self.course.get()
@@ -387,6 +391,14 @@ class Session(GCModel):
                 return False, "Entity has uninitialized properties: day_no"
         return True
 
+    @property
+    def max_level(self):
+        return self.course.get().max_level
+
+    @property
+    def profile(self):
+        return self.course.get().profile
+
     def to_dict(self):
         result = super(Session, self).to_dict()
         course = self.course.get().course_type
@@ -395,7 +407,9 @@ class Session(GCModel):
         result['activities'] = self.get_exercises
         result['on_before'] = self.get_on_before
         result['on_after'] = self.get_on_after
-        result['max_level'] = self.max_level
+        result['max_level'] =  self.course.get().max_level
+        result['profile'] =  self.course.get().profile
+        print result
 
         del result['canceled']
         if self.session_type != "SINGLE":
@@ -558,10 +572,10 @@ class Participation(GCModel):
         for inds in self.indicator_list:
             ret_i = []
             for ind in inds:
-                indicator = Key(urlsafe=ind['indicator']).get()
+                indicator = Key(urlsafe=ind['id']).get()
                 # we make a copy, it's direct access to it..
                 d_indicator = indicator.to_dict()
-                d_indicator['value'] = indicator['value']
+                d_indicator['value'] = ind['value']
                 ret_i.append(d_indicator)
             ret.append(ret_i)
         return ret
@@ -590,10 +604,10 @@ class Performance(GCModelMtoMNoRep):
         for inds in self.indicator_list:
             ret_i = []
             for ind in inds:
-                indicator = Key(urlsafe=ind['indicator']).get()
+                indicator = Key(urlsafe=ind['id']).get()
                 # we make a copy, it's direct access to it..
                 d_indicator = indicator.to_dict()
-                d_indicator['value'] = indicator['value']
+                d_indicator['value'] = ind['value']
                 ret_i.append(d_indicator)
             ret.append(ret_i)
         return ret
@@ -621,7 +635,7 @@ class PossibleAnswer(GCModel):
     text = ndb.StringProperty()
     img = ndb.StringProperty()
     value = ndb.StringProperty()
-    
+
 
 
 class Indicator(GCModel):

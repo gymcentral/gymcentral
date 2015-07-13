@@ -263,7 +263,7 @@ class APIDB():
         :return: list of users
         """
         kwargs['projection'] = 'member'
-        query = club.all_memberships.fr(cls.model_club_user.status == status)
+        query = club.all_memberships.filter(cls.model_club_user.status == status)
         return cls.__get(query, **kwargs)
 
     @classmethod
@@ -493,6 +493,7 @@ class APIDB():
         """
         course = cls.model_course()
         course.club = club.key
+        print "Course %s" % args
         cls.__create(course, **args)
         return course
 
@@ -1270,7 +1271,7 @@ class APIDB():
 
     # [BEGIN] Subscriptions
     @classmethod
-    def update_subscription(cls, user, not_allowed=None, **values):
+    def update_subscription(cls, subscription, not_allowed=None, **values):
         """
         Updates a subscription
         :py:func:`._APIDB__update`
@@ -1282,7 +1283,7 @@ class APIDB():
         """
         if "increase_level" in values:
             values['increase_level'] = bool(values['increase_level']) 
-        return cls.__update(user, not_allowed=not_allowed, **values)
+        return cls.__update(subscription, not_allowed=not_allowed, **values)
 
     # [END] Subscriptions
 
@@ -1419,11 +1420,12 @@ class APIDB():
                 raise BadParameters(key)
             if hasattr(model, key):
                 try:
+                    print (' %s %s') % ( key, value)
                     setattr(model, key, value)
                 except:
                     raise BadParameters(key)
             else:
-                raise BadParameters(key)
+                raise BadParameters("Not in the model %s " % key)
         model.put()
         return True, model
 

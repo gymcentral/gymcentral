@@ -55,7 +55,11 @@ def coach_profile(req):
                                                        'country', 'city', 'language',
                                                        'email', 'phone', 'ownerClub'])
         if 'owner_club' in j_req:
-            membership = APIDB.get_user_club_role(req.user, Key(urlsafe=j_req['owner_club']))
+            try:
+                club = Key(urlsafe=j_req['owner_club']).get()
+            except Exception as ex:
+                raise BadParameters("It seems that the club does not exists")
+            membership = APIDB.get_user_club_role(req.user, club)
             if membership != "OWNER" and membership != "TRAINER":
                 raise BadRequest("It seems that you want to activate a club that you are not owner or trainer of")
 
@@ -302,7 +306,7 @@ def coach_course_list(req, uskey_club):
         else:
             j_course['completeness'] = 0
         allowed = ["id", "name", "description", "trainers", "subscriber_count", "session_count", "course_type",
-                   "completeness"]
+                   "completeness", "profile", "max_level"]
         if course.course_type == "SCHEDULED":
             allowed += ["start_date", "end_date"]
         elif course.course_type == "PROGRAM":
@@ -323,9 +327,8 @@ def coach_course_create(req, uskey_club):
 
     Create a course for the club. |uroleOT|
     """
-    j_req = json_from_request(req, mandatory_props=["name", "description", "courseType"],
-                              optional_props=["startDate", "endDate", "duration"])
-    print j_req
+    j_req = json_from_request(req, mandatory_props=["name", "description", "courseType", "maxLevel"],
+                              optional_props=["startDate", "endDate", "duration", "profile"])
     try:
         if "startDate" in j_req:
             j_req['startDate'] = datetime.datetime.fromtimestamp(long(j_req['startDate']) / 1000)
@@ -367,7 +370,8 @@ def coach_course_detail(req, uskey_course):
     else:
         j_course['completeness'] = 0
     return sanitize_json(j_course, ['id', 'name', 'description', 'start_date', 'end_date', 'duration',
-                                    'trainers', 'course_type', 'subscriber_count', 'session_count', 'completeness'],
+                                    'trainers', 'course_type', 'subscriber_count', 'session_count', 'completeness',
+                                    "profile", 'max_level'],
                          except_on_missing=False)
 
 
@@ -380,7 +384,8 @@ def coach_course_update(req, uskey_course):
     Update the datail of a course. |uroleOT|
     """
     j_req = json_from_request(req,
-                              optional_props=["name", "description", "startDate", "endDate", "duration"])
+                              optional_props=["name", "description", "startDate", "endDate", "duration", 'profile',
+                                              'max_level'])
     if "start_date" in j_req:
         j_req['start_date'] = datetime.datetime.fromtimestamp(long(j_req['start_date']) / 1000)
     if "end_date" in j_req:
@@ -439,23 +444,24 @@ def coach_course_session_list(req, uskey_course):
         res_obj = session.to_dict()
         res_obj['status'] = session.status
         # res_obj['participated'] = APIDB.user_participated_in_session(req.user, session)
-        session_participations=APIDB.get_session_participations(session, count_only=True)
+        session_participations = APIDB.get_session_participations(session, count_only=True)
         course_subscribers = APIDB.get_course_subscribers(course, count_only=True)
         res_obj['participation_count'] = session_participations
         if course_subscribers:
-            res_obj['participation_percent'] = 100*(float(session_participations)/float(course_subscribers))
+            res_obj['participation_percent'] = 100 * (float(session_participations) / float(course_subscribers))
         else:
             res_obj['participation_percent'] = 0
         # res_obj['actnoivity_count'] = session.activity_count
         # TODO: check the 'url' here
         allowed = ['id', 'name', 'status', 'participation_count',
-                   'session_type','participation_percent']
+                   'session_type', 'participation_percent', 'max_level', 'profile']
         course_type = session.course.get().course_type
         if course_type == "SCHEDULED":
             allowed += ["start_date", "end_date"]
         elif course_type == "PROGRAM":
             allowed += ["week_no", "day_no"]
         res_list.append(sanitize_json(res_obj, allowed=allowed))
+
     return dict(total=total, results=res_list)
 
 
@@ -470,11 +476,11 @@ def coach_course_session_create(req, uskey_course):
     course = req.model
     j_req = json_from_request(req, mandatory_props=["name", "sessionType", ],
                               optional_props=["startDate", "endDate", "weekNo", "dayNo", "url", "metaData",
-                                              "activities", "profile"])
+                                              "activities"])
 
     session = APIDB.create_session(course, **j_req)
 
-    return HttpCreated(session)
+    return HttpCreated(dict(id=session.id))
 
 
 @app.route('/%s/sessions/<uskey_session>' % APP_COACH, methods=('GET',))
@@ -506,10 +512,10 @@ def coach_session_detail(req, uskey_session):
         res_list.append(j_activity)
     j_session['activities'] = sanitize_list(res_list,
                                             allowed=['id', 'name', 'level_count'])
-    j_session['max_level'] = session.max_level
+
     # there should be 'type',x
     allowed = ['id', 'name', 'status', 'participation_count',
-               'activities', 'session_type', 'profile', 'meta_data', 'on_before', 'on_after', 'created', 'max_level']
+               'activities', 'session_type', 'meta_data', 'on_before', 'on_after', 'created', 'max_level', 'profile']
     course_type = session.course.get().course_type
     if session.session_type == "SINGLE":
         allowed += ['url']
@@ -517,6 +523,7 @@ def coach_session_detail(req, uskey_session):
         allowed += ["start_date", "end_date"]
     elif course_type == "PROGRAM":
         allowed += ["week_no", "day_no"]
+    print j_session
     res = sanitize_json(j_session,
                         allowed=allowed)
     return res
@@ -532,7 +539,7 @@ def coach_course_session_update(req, uskey_session):
     """
     session = req.model
     j_req = json_from_request(req,
-                              optional_props=["name", "sessionType", "profile", "startDate", "endDate", "weekNo",
+                              optional_props=["name", "sessionType", "startDate", "endDate", "weekNo",
                                               "dayNo", "url", "metaData", "activities"])
     session = APIDB.update_session(session, **j_req)
     return sanitize_json(session)
@@ -572,7 +579,8 @@ def coach_session_participations(req, uskey_session):
     res_list = []
     for participation in participations:
         res = participation.to_dict()
-        res['user'] = sanitize_json(participation.user.get(), ['name', 'id', 'avatar', 'picture'])
+        res['user'] = sanitize_json(participation.user.get(), ['name', 'id', 'avatar', 'picture', 'sensors'],
+                                    except_on_missing=False)
         subscription = APIDB.get_course_subscription(session.course, participation.user)
         res['subscription_id'] = subscription.id
         res['current_level'] = subscription.profile_level
@@ -583,7 +591,7 @@ def coach_session_participations(req, uskey_session):
         res['participation_count'] = participation.participation_count
         res_list.append(sanitize_json(res, ['id', 'user', 'level_up', 'current_level', 'indicators',
                                             'max_completeness', 'completeness', 'participation_count', 'time',
-                                            'level','subscription_id']))
+                                            'level', 'subscription_id']))
     return dict(results=res_list, total=total)
 
 
@@ -700,8 +708,23 @@ def coach_course_subscription_details(req, uskey_subscription):
     """
     subscription = req.model
     user = subscription.member.get()
-    res = sanitize_json(subscription, ['id', 'start_date', 'profile_level', 'observations', 'disabled_exercises'])
+
+    res = sanitize_json(subscription.to_dict(), ['id', 'start_date', 'profile_level', 'observations', 'disabled_exercises','max_level','profile'])
     res['user'] = sanitize_json(user, ['id', 'name', 'picture'])
+    sessions = APIDB.get_course_sessions(subscription.course.get())
+    res_list = []
+    added_activities = []
+    for session in sessions:
+        activities = APIDB.get_session_exercises(session)
+        for activity in activities:
+            if activity.id not in added_activities:
+                added_activities.append(activity.id)
+                j_activity = activity.to_dict()
+                level_count = len(activity.levels)
+                j_activity['level_count'] = level_count
+            # this is already a json, see docs in the model
+                res_list.append(j_activity)
+    res['activities'] = sanitize_list(res_list,allowed=['id', 'name', 'level_count'])
     return res
 
 
@@ -715,7 +738,7 @@ def coach_course_subscription_update(req, uskey_subscription):
     """
     subscription = req.model
     j_req = json_from_request(req,
-                              optional_props=['profileLevel', ('feedback', "APPROVED"), 'increaseLevel',
+                              optional_props=['profileLevel', 'feedback', 'increaseLevel',
                                               ('disabledExercises', []), ('observations', [])])
     disabled_exercises = [Key(urlsafe=e) for e in j_req['disabled_exercises']]
     observations = [Observation(text=e['text'], created_by=Key(urlsafe=e['createdBy'] or req.user.id)) for e in
@@ -732,6 +755,7 @@ def coach_course_subscription_update(req, uskey_subscription):
     APIDB.update_subscription(subscription, ['role'], **j_req)
     return HttpEmpty()
 
+
 @app.route('/%s/subscriptions/<uskey_subscription>/level' % APP_COACH, methods=('PUT',))
 @user_has_role(["TRAINER", "OWNER"])
 def coach_course_subscription_update_level(req, uskey_subscription):
@@ -741,9 +765,10 @@ def coach_course_subscription_update_level(req, uskey_subscription):
     Updates the level of a subscription. |uroleO|
     """
     subscription = req.model
-    j_req = json_from_request(req,mandatory_props=['profileLevel'], optional_props=['increaseLevel'])
-    APIDB.update_subscription(subscription,  **j_req)
+    j_req = json_from_request(req, mandatory_props=['profileLevel'], optional_props=['increaseLevel'])
+    APIDB.update_subscription(subscription, **j_req)
     return HttpEmpty()
+
 
 @app.route('/%s/subscriptions/<uskey_subscription>' % APP_COACH, methods=('DELETE',))
 @user_required
@@ -1008,6 +1033,7 @@ def coach_participations_performances(req, uskey_participation):
     Perfomances of a participation. |uroleOT|
     """
     participation = req.model
+
     user = participation.user.get()
     performances = APIDB.get_performances_from_participation(participation)
     res_list = []
@@ -1017,13 +1043,19 @@ def coach_participations_performances(req, uskey_participation):
     for performance in performances:
         res_obj = performance.to_dict()
         activity = performance.activity.get()
-        res_obj['activity'] = sanitize_json(activity,['id','name'])
+        res_obj['activity'] = sanitize_json(activity, ['id', 'name'])
         res_obj['indicators'] = performance.indicators
-        res_list.append(sanitize_json(res_obj,['activity','record_date', 'completeness', 'indicators','max_completeness','level']))
-    print user
-    return dict(user=sanitize_json(user,['id','name','picture']), participation=participation.id, 
-        subscription = sanitize_json(subscription,['id','profile_level']),
-        session = sanitize_json(session,['id','name','max_level']), performances=res_list)
+        res_list.append(sanitize_json(res_obj,
+                                      ['activity', 'record_date', 'completeness', 'indicators', 'max_completeness',
+                                       'level']))
+    d_participation = participation.to_dict()
+    d_participation['max_completeness'] = participation.max_completeness
+    d_participation['indicators'] = participation.indicators
+    return dict(user=sanitize_json(user, ['id', 'name', 'picture', 'sensors'], except_on_missing=False),
+                participation=sanitize_json(d_participation,
+                                            ['id', 'max_completeness', 'completeness', 'time', 'indicators']),
+                subscription=sanitize_json(subscription, ['id', 'profile_level']),
+                session=sanitize_json(session, ['id', 'name', 'max_level']), performances=res_list)
 
 
 @app.route('/%s/performances/<uskey_perfomance>' % APP_COACH, methods=('GET',))

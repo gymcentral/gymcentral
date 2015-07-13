@@ -96,23 +96,22 @@ def trainee_profile(req):
     - |ul|
     """
     out = ['id', 'name', 'nickname', 'gender', 'picture', 'avatar', 'birthday', 'country', 'city', 'language',
-           'email', 'phone', 'active_club']
+           'email', 'phone', 'active_club', 'sensors']
     if req.method == "GET":
-        return sanitize_json(req.user, out,except_on_missing=False)
+        return sanitize_json(req.user, out, except_on_missing=False)
     elif req.method == "PUT":
         j_req = json_from_request(req,
                                   optional_props=['name', 'nickname', 'gender', 'picture', 'avatar', 'birthday',
                                                   'country', 'city', 'language',
-                                                  'email', 'phone', 'activeClub'])
+                                                  'email', 'phone', 'activeClub', 'sensors'])
         if 'active_club' in j_req:
             membership = APIDB.get_user_club_role(req.user, Key(urlsafe=j_req['active_club']))
-            print membership
             if membership != "MEMBER":
                 raise BadRequest("It seems that you want to activate a club that you are not member of")
         update, user = APIDB.update_user(req.user, **j_req)
         s_token = GCAuth.auth_user_token(user)
         deferred.defer(sync_user, user, s_token)
-        return sanitize_json(user, out,except_on_missing=False)
+        return sanitize_json(user, out, except_on_missing=False)
 
 
 @app.route('/%s/users/current/clubs' % APP_TRAINEE, methods=('GET',))
@@ -262,6 +261,7 @@ def trainee_course_list(req, uskey_club):
         j_course["trainers"] = sanitize_list(APIDB.get_course_trainers(course), allowed=["id", "name", "picture"])
         j_course["subscriber_count"] = APIDB.get_course_subscribers(course, count_only=True)
         j_course["session_count"] = APIDB.get_course_sessions(course, count_only=True)
+
         allowed = ["id", "name", "description", "trainers", "subscriber_count", "session_count", "course_type"]
         if course.course_type == "SCHEDULED":
             allowed += ["start_date", "end_date"]
@@ -423,10 +423,10 @@ def trainee_session_detail(req, uskey_session):
     j_session['status'] = session.status
     j_session['on_before'] = sanitize_list(APIDB.get_session_indicator_before(session),
                                            allowed=["name", "indicator_type", "description", "possible_answers",
-                                                    "required"])
+                                                    "required", 'id'])
     j_session['on_after'] = sanitize_list(APIDB.get_session_indicator_after(session),
                                           allowed=["name", "indicator_type", "description", "possible_answers",
-                                                   "required"])
+                                                   "required", 'id'])
     activities = APIDB.get_session_user_activities(session, req.user)
     res_list = []
     for activity in activities:
@@ -437,7 +437,7 @@ def trainee_session_detail(req, uskey_session):
         j_activity['source'] = level.source
         j_activity['indicators'] = sanitize_list(activity.indicators,
                                                  allowed=["name", "indicator_type", "description", "possible_answers",
-                                                          "required"])
+                                                          "required", 'id'])
         # this is already a json, see docs in the model
         j_activity['details'] = level.details
         res_list.append(j_activity)
@@ -474,7 +474,6 @@ def trainee_session_performance(req, uskey_session):
     # check the data from here. probably the particaipation goes into the creation
     participation = APIDB.create_participation(req.user, req.model, **participation)
     for performance in performances:
-        print performance
         APIDB.create_performance(participation, performance['activityId'], performance['completeness'],
                                  performance['recordDate'], performance['indicators'])
     return HttpCreated()

@@ -1,5 +1,12 @@
 # .coveragerc to control coverage.py
-[run] branch = True [report]
+[run] branch = True
+omit = *test*
+ *snippet*
+ *script*
+ *example*
+ *conf*
+ *cfg*
+[report]
 # Regexes for lines to exclude from consideration
 exclude_lines =
     # Have to re-enable the standard pragma
@@ -13,4 +20,5 @@ exclude_lines =
     # Don't complain if non-runnable code isn't run:
     if 0:
     if __name__ == .__main__.: ignore_errors = True [html]
+
 directory = coverage_html_report

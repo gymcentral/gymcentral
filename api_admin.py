@@ -8,7 +8,7 @@ import json
 import webapp2
 from gaebasepy.auth import GCAuth, user_required
 from gaebasepy.exceptions import AuthenticationError, BadParameters
-from gaebasepy.gc_utils import json_from_paginated_request, sanitize_list
+from gaebasepy.gc_utils import json_from_paginated_request, json_from_request, sanitize_list
 from tasks import sync_user
 
 
@@ -32,6 +32,41 @@ APP_ADMIN = "api/admin"
 
 
 # ------------------------------ ADMIN -----------------------------------------------
+
+@app.route("/%s/auth/gc" % APP_ADMIN, methods=('POST',))
+def auth(req):  # pragma: no cover
+    """
+     ``GET`` @ |ta| ``/auth/<provider>/<token>``
+
+    This function handles the authentication via password and username
+
+    """
+    j_req = json_from_request(req,['username','password'])
+    username = j_req['username']
+    password = j_req['password']
+    auth_id = "gc:"+username
+    try:
+        user = User.get_by_auth_password(auth_id, password)
+    except:
+        raise AuthenticationError("Username or password are invalid")
+    s_token = GCAuth.auth_user_token(user)
+    # if we crate the response, then we need the cors stuff.
+    # response = webapp2.Response(content_type='application/json', charset='UTF-8')
+    # if created:
+    #     response.status = 201
+    # cookie = GCAuth.get_secure_cookie(token)
+    # response.set_cookie('gc_token', cookie, secure=False,
+                        # max_age=int(cfg.AUTH_TOKEN_MAX_AGE), domain="/")
+    token = GCAuth.get_token(s_token)
+    # resp.headers.update({
+    #             'Access-Control-Allow-Origin': origin,
+    #             'Access-Control-Allow-Credentials': 'true'})
+    # response.write(json.dumps(token))
+    deferred.defer(sync_user, user, s_token)
+    return token
+        
+
+
 @app.route("/%s/auth/<provider>/<token>" % APP_ADMIN, methods=('GET',))
 def auth(req, provider, token):  # pragma: no cover
     """
@@ -69,31 +104,39 @@ def auth(req, provider, token):  # pragma: no cover
         user = user_via_mail
     # create the user..
     created = False
-    if 'gender' not in d_user:
-        d_user['gender'] = "unknown"
     if not user:
         if provider == 'google':
             created, user = User.create_user(auth_id, unique_properties=['email'],
-                                             name=d_user['name'],
+                                             name=d_user.get('name','unknown'),
                                              nickname="",
-                                             gender=d_user['gender'][0],
-                                             picture=d_user['picture'], avatar="", birthday=datetime.datetime.now(),
+                                             gender=d_user.get('gender','unknown')[0],
+                                             picture=d_user.get('picture',None), 
+                                             avatar="", 
+                                             birthday=datetime.datetime.now(),
                                              country="",
                                              city="",
-                                             language=d_user['locale'], email=d_user['email'], phone="",
+                                             language=d_user.get('locale','en'), 
+                                             email=d_user.get('email','none@gymcentral.net'), 
+                                             phone="",
                                              active_club=None,
-                                             owner_club=None)
+                                             owner_club=None,
+                                             sensors=[])
         elif provider == 'facebook':
             created, user = User.create_user(auth_id, unique_properties=['email'],
-                                             name=d_user['name'],
+                                                name=d_user.get('name','unknown'),
                                              nickname="",
-                                             gender=d_user['gender'][0],
-                                             picture=("http://graph.facebook.com/%s/picture?type=large" % d_user['id']),
-                                             avatar="",
-                                             birthday=datetime.datetime.now(), country="", city="",
-                                             language=d_user['locale'][0:2], email=d_user['email'], phone="",
+                                             gender=d_user.get('gender','unknown')[0],
+                                             picture = "http://graph.facebook.com/%s/picture?type=large" % d_user.get('id',None),
+                                             avatar="", 
+                                             birthday=datetime.datetime.now(),
+                                             country="",
+                                             city="",
+                                             language=d_user.get('locale','en'), 
+                                             email=d_user.get('email','none@gymcentral.net'), 
+                                             phone="",
                                              active_club=None,
-                                             owner_club=None)
+                                             owner_club=None,
+                                             sensors=[])
         else:
             raise AuthenticationError("provider not allowed")
         if not created:
