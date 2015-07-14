@@ -1054,7 +1054,7 @@ def coach_participations_performances(req, uskey_participation):
     return dict(user=sanitize_json(user, ['id', 'name', 'picture', 'sensors'], except_on_missing=False),
                 participation=sanitize_json(d_participation,
                                             ['id', 'max_completeness', 'completeness', 'time', 'indicators']),
-                subscription=sanitize_json(subscription, ['id', 'profile_level']),
+                subscription=sanitize_json(subscription, ['id', 'profile_level','disabled_exercises']),
                 session=sanitize_json(session, ['id', 'name', 'max_level']), performances=res_list)
 
 
