@@ -502,17 +502,11 @@ def trainee_session_performance(req, uskey_session):
     Post the performance of the session
     """
     participation = json_from_request(req, mandatory_props=['joinTime', 'leaveTime', 'indicators',
-                                                            'activityPerformances'], optional_props=['completeness'])
-    logging.debug("participation %s" % participation)
-    if 'completeness' not in participation or not participation['completeness']:
-        participation['completeness'] = 75
+                                                            'activityPerformances','completeness'])
     performances = participation.pop('activity_performances')
     # check the data from here. probably the particaipation goes into the creation
     participation = APIDB.create_participation(req.user, req.model, **participation)
     for performance in performances:
-        logging.debug("participation %s" % performance)
-        if 'completeness' not in performance or not performance['completeness']:
-            performance['completeness'] = 75
         APIDB.create_performance(participation, performance['activityId'], performance['completeness'],
                                  performance['recordDate'], performance['indicators'])
     return HttpCreated()
