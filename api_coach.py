@@ -17,7 +17,7 @@ from auth import user_has_role
 from gaebasepy.auth import user_required, GCAuth
 from gaebasepy.exceptions import BadParameters, AuthenticationError, BadRequest
 from gaebasepy.gc_utils import sanitize_json, sanitize_list, json_from_paginated_request, \
-    json_from_request
+    json_from_request, date_from_js_timestamp
 from gaebasepy.http_codes import HttpEmpty, HttpCreated
 from google.appengine.api import search
 from google.appengine.ext import ndb
@@ -1101,3 +1101,30 @@ def search_user(req):
     query = search.Query(query_string=query_string, options=query_options)
     results = [Key(urlsafe=r.doc_id) for r in index.search(query)]
     return dict(results=sanitize_list(ndb.get_multi(results), ['id', 'nickname', 'name', 'avatar', 'picture']))
+
+
+@app.route('/%s/clubs/<uskey_club>/rooms' % APP_COACH, methods=('POST',))
+@user_required
+def coach_room_create(req,uskey_club):
+    """
+    ``POST`` @ |ca| + ``/rooms``
+
+    Create a room.
+    """
+    j_req = json_from_request(req, mandatory_props=["name", "roomType"], optional_props=['config'])
+    room = APIDB.create_room(req.model, **j_req)
+    return HttpCreated(room.to_dict())
+
+@app.route('/%s/rooms/<uskey_room>/events' % APP_COACH, methods=('POST',))
+@user_required
+def coach_event_create(req,uskey_room):
+    """
+    ``POST`` @ |ca| + ``/%s/rooms/<uskey_room>/event``
+
+    Create an event for the room.
+    """
+    j_req = json_from_request(req, mandatory_props=["name", "eventType","startDate","endDate"], optional_props=['config'])
+    j_req['start_date']=date_from_js_timestamp(j_req['start_date'])
+    j_req['end_date']=date_from_js_timestamp(j_req['end_date'])
+    event = APIDB.create_event(req.model, **j_req)
+    return HttpCreated(event.to_dict())

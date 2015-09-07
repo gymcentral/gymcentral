@@ -43,6 +43,8 @@ class APIDB():
     model_level = models.Level
     model_detail = models.Detail
     model_indicator = models.Indicator
+    model_room = models.Room
+    model_event = models.Event
 
     @classmethod
     def create_user(cls, auth_id, unique_properties=None, **user_values):
@@ -1368,6 +1370,28 @@ class APIDB():
         return cls.__update(indicator, **args)
 
     # [END] indicators
+
+    # [START] rooms
+    @classmethod
+    def create_room(cls, club, **kwargs):
+        room = cls.model_room()
+        room.club = club.key
+        return cls.__create(room, **kwargs)
+
+    @classmethod
+    def get_club_rooms(cls, club, **kwargs):
+        return cls.__get(cls.model_room.query(cls.model_room.club == club.key), **kwargs)
+
+    @classmethod
+    def create_event(cls, room, **kwargs):
+        event = cls.model_event()
+        event.room = room.key
+        return cls.__create(event, **kwargs)
+
+    @classmethod
+    def get_room_events(cls, room, **kwargs):
+        return cls.__get(cls.model_event.query(cls.model_event.room==room.key),**kwargs)
+    # [END] rooms
 
     @classmethod
     def deactivate(cls, obj):

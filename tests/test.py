@@ -4,9 +4,14 @@ import unittest
 import logging.config
 
 from google.appengine.ext import testbed
+from google.appengine.ext.ndb.key import Key
 import webtest
 
 from api_db_utils import APIDB
+
+
+
+
 
 
 
@@ -21,6 +26,7 @@ from api_trainee import app as app_trainee
 from api_coach import app
 from gaebasepy.auth import GCAuth
 from gaebasepy.gc_utils import date_to_js_timestamp, date_from_js_timestamp
+import models
 
 __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 
@@ -406,7 +412,7 @@ class APITestCases(unittest.TestCase):
         # session_response_base = ['id', 'name', 'sessionType', 'profile', 'status', 'metaData', 'activities', 'onBefore',
         # 'onAfter', 'created','maxLevel']
         session_response_scheduled = session_response_base + ['startDate', 'endDate']
-        d_input = dict(name="session base 2",sessionType='JOINT',
+        d_input = dict(name="session base 2", sessionType='JOINT',
                        startDate=date_to_js_timestamp(datetime.now() - timedelta(hours=1)),
                        endDate=date_to_js_timestamp(datetime.now() + timedelta(hours=1)))
 
@@ -419,7 +425,7 @@ class APITestCases(unittest.TestCase):
 
         id_course = self._create_course('PROGRAM', id_club=id_club)
         # session_response_base = ['id', 'name', 'sessionType', 'profile', 'status', 'metaData', 'activities', 'onBefore',
-        #                          'onAfter', 'created','maxLevel']
+        # 'onAfter', 'created','maxLevel']
         session_response_program = session_response_base + ['weekNo', 'dayNo']
         d_input = dict(name="session base 3", profile=profile, max_level=2, sessionType='JOINT', weekNo=1, dayNo=2)
         d_output = self.app.post_json('/api/coach/courses/%s/sessions' % id_course, d_input,
@@ -507,8 +513,10 @@ class APITestCases(unittest.TestCase):
         assert self.__has_keys(['id', 'avatar', 'nickname'], d_output['results'][0]), d_output
 
         d_output = self.app.get('/api/coach/subscriptions/%s' % id_observation, headers=self.auth_headers_coach).json
-        assert self.__has_keys(['id', 'user', 'startDate', 'observations', 'disabledExercises', 'profileLevel','profile','activities','maxLevel'],
-                               d_output), d_output
+        assert self.__has_keys(
+            ['id', 'user', 'startDate', 'observations', 'disabledExercises', 'profileLevel', 'profile', 'activities',
+             'maxLevel'],
+            d_output), d_output
         d_input = dict(profileLevel=1,
                        observations=[dict(text="test1", createdBy=""), dict(text='test2', createdBy=self.dummy.id)],
                        increaseLevel=True, feedback="DECLINED")
@@ -622,3 +630,20 @@ class APITestCases(unittest.TestCase):
         self.app.post_json('/api/trainee/logs', d_input, headers=self.auth_headers_trainee)
         log = self.app.get('/api/trainee/logs', headers=self.auth_headers_trainee).json
         assert log['data']['text'] == d_input['text'], d_output
+
+    def test_room_events(self):
+        id_club = self._create_club()
+        d_room = dict(name='test', roomType='test_room', config=dict(config='test'))
+        room = self.app.post_json('/api/coach/clubs/%s/rooms' % id_club, d_room, headers=self.auth_headers_coach)
+        rooms = self.app.get('/api/trainee/clubs/%s/rooms' % id_club, headers=self.auth_headers_trainee).json
+        assert rooms['total'] == 1
+        d_event = dict(name="test event",
+                       startDate=date_to_js_timestamp(datetime.now() - timedelta(hours=1)),
+                       endDate=date_to_js_timestamp(datetime.now() + timedelta(hours=1)),
+                       config=dict(config='test', event=True),
+                       eventType="event type")
+        self.app.post_json('/api/coach/rooms/%s/events' % room.json['id'], d_event, headers=self.auth_headers_coach)
+
+        room = self.app.get('/api/trainee/rooms/%s' % room.json['id'], headers=self.auth_headers_trainee).json
+
+        assert len(room['events']) == 1

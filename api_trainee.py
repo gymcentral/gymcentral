@@ -1,5 +1,4 @@
 import json
-import logging
 
 from google.appengine.ext.deferred import deferred
 
@@ -502,7 +501,7 @@ def trainee_session_performance(req, uskey_session):
     Post the performance of the session
     """
     participation = json_from_request(req, mandatory_props=['joinTime', 'leaveTime', 'indicators',
-                                                            'activityPerformances','completeness'])
+                                                            'activityPerformances', 'completeness'])
     performances = participation.pop('activity_performances')
     # check the data from here. probably the particaipation goes into the creation
     participation = APIDB.create_participation(req.user, req.model, **participation)
@@ -558,3 +557,25 @@ def search_user(req):
     query = search.Query(query_string=query_string, options=query_options)
     results = [Key(urlsafe=r.doc_id) for r in index.search(query)]
     return dict(results=sanitize_list(ndb.get_multi(results), ['id', 'nickname', 'name', 'avatar', 'picture']))
+
+
+# extensions for events and rooms
+@app.route("/%s/clubs/<uskey_club>/rooms" % APP_TRAINEE, methods=('GET',))
+@user_required
+def club_room_list(req, uskey_club):
+    club = req.model
+    j_req = json_from_paginated_request(req)
+    page = int(j_req['page'])
+    size = int(j_req['size'])
+    rooms, total = APIDB.get_club_rooms(club, paginated=True, size=size, page=page)
+    return dict(results=rooms, total=total)
+
+
+@app.route("/%s/rooms/<uskey_room>" % APP_TRAINEE, methods=('GET',))
+@user_required
+def room_detail(req, uskey_room):
+    room = req.model
+    d_room = room.to_dict()
+    events = APIDB.get_room_events(room)
+    d_room['events'] = events
+    return d_room

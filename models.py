@@ -694,3 +694,16 @@ class Exercise(GCModel):
         # result['list_levels'] = [l.to_dict() for l in self.list_levels]
         # return result
 
+class Room(GCModel):
+    name = ndb.StringProperty(required=True)
+    room_type = ndb.StringProperty(required=True)
+    config = ndb.JsonProperty()
+    club = ndb.KeyProperty(kind='Club', required=True)
+
+class Event(GCModel):
+    name = ndb.StringProperty(required=True)
+    event_type = ndb.StringProperty(required=True)
+    config = ndb.JsonProperty()
+    start_date = ndb.DateTimeProperty(auto_now_add=False)
+    end_date = ndb.DateTimeProperty(auto_now_add=False)
+    room = ndb.KeyProperty(kind='Room', required=True)
