@@ -507,7 +507,7 @@ class APITestCases(unittest.TestCase):
         assert self.__has_keys(['id', 'avatar', 'nickname'], d_output['results'][0]), d_output
 
         d_output = self.app.get('/api/coach/subscriptions/%s' % id_observation, headers=self.auth_headers_coach).json
-        assert self.__has_keys(['id', 'user', 'startDate', 'observations', 'disabledExercises', 'profileLevel'],
+        assert self.__has_keys(['id', 'user', 'startDate', 'observations', 'disabledExercises', 'profileLevel','profile','activities','maxLevel'],
                                d_output), d_output
         d_input = dict(profileLevel=1,
                        observations=[dict(text="test1", createdBy=""), dict(text='test2', createdBy=self.dummy.id)],

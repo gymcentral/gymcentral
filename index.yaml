@@ -157,6 +157,11 @@ indexes:
   - name: created
     direction: desc
 
+- kind: Participation
+  properties:
+  - name: session
+  - name: user
+
 - kind: Session
   properties:
   - name: canceled

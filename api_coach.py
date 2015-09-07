@@ -95,15 +95,16 @@ def coach_club_list(req):
     ret = {}
     items = []
     for club in clubs:
-        j_club = club.to_dict()
-        j_club['role'] = club.membership.membership_type
-        j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
-        j_club['course_count'] = APIDB.get_club_courses(club, count_only=True)
-        j_club['owner_count'] = APIDB.get_club_owners(club, count_only=True)
-        j_club['trainer_count'] = APIDB.get_club_trainers(club, count_only=True)
-        # j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['id','name', 'picture'])
-        items.append(j_club)
-        j_club['trainers'] = sanitize_list(APIDB.get_club_trainers(club), ['id', 'name', 'picture'])
+        if not club.is_deleted:
+            j_club = club.to_dict()
+            j_club['role'] = club.membership.membership_type
+            j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
+            j_club['course_count'] = APIDB.get_club_courses(club, count_only=True)
+            j_club['owner_count'] = APIDB.get_club_owners(club, count_only=True)
+            j_club['trainer_count'] = APIDB.get_club_trainers(club, count_only=True)
+            # j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['id','name', 'picture'])
+            items.append(j_club)
+            j_club['trainers'] = sanitize_list(APIDB.get_club_trainers(club), ['id', 'name', 'picture'])
 
     if paginated:
         ret['results'] = sanitize_list(items,
@@ -523,7 +524,6 @@ def coach_session_detail(req, uskey_session):
         allowed += ["start_date", "end_date"]
     elif course_type == "PROGRAM":
         allowed += ["week_no", "day_no"]
-    print j_session
     res = sanitize_json(j_session,
                         allowed=allowed)
     return res
@@ -744,7 +744,7 @@ def coach_course_subscription_update(req, uskey_subscription):
     observations = [Observation(text=e['text'], created_by=Key(urlsafe=e['createdBy'] or req.user.id)) for e in
                     j_req['observations']]
     # delete if empty, otherwise are removed.
-    if disabled_exercises:
+    if disabled_exercises is not None:
         j_req['disabled_exercises'] = disabled_exercises
     else:
         del j_req['disabled_exercises']

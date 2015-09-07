@@ -15,7 +15,7 @@ __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 
 def sync_user(user,token):
     
-    url = "http://gsync.calocode.com/"
+    url = "https://gcrt3.herokuapp.com/sync?pass=6sWreKWwYJwNbpBPYY3Ggfvqeaw48B4PSCQXcpj3WrsYrDqZt3ykTDAYqVD88hMC"
     d = user.to_dict()
     # user_id = user.get_id()
     # user_token = models.User.create_auth_token(user_id)
@@ -24,7 +24,7 @@ def sync_user(user,token):
     data = json.dumps(camel_case(d), default=json_serializer)
     #logging.debug(data)
     # data = json.dumps(data)
-    dpd = cfg.API_APP_CFG['gc']['dpd-ssh-key']
+    # dpd = cfg.API_APP_CFG['gc']['dpd-ssh-key']
     result = urlfetch.fetch(url=url,
                             payload=data,
                             method=urlfetch.POST,

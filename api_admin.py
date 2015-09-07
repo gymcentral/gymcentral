@@ -3,12 +3,11 @@ App for admin.
 
 list of functions that are mapped behind ``/app/admin/``
 """
-import json
 
-import webapp2
-from gaebasepy.auth import GCAuth, user_required
-from gaebasepy.exceptions import AuthenticationError, BadParameters
-from gaebasepy.gc_utils import json_from_paginated_request, json_from_request, sanitize_list
+from api_db_utils import APIDB
+from gaebasepy.auth import GCAuth
+from gaebasepy.exceptions import AuthenticationError
+from gaebasepy.gc_utils import json_from_request
 from tasks import sync_user
 
 
@@ -21,11 +20,9 @@ import logging.config
 from google.appengine.ext import ndb, deferred
 
 import cfg
-from models import User
+from models import User, Club
 
 from app import app
-
-
 
 
 APP_ADMIN = "api/admin"
@@ -41,10 +38,10 @@ def auth(req):  # pragma: no cover
     This function handles the authentication via password and username
 
     """
-    j_req = json_from_request(req,['username','password'])
+    j_req = json_from_request(req, ['username', 'password'])
     username = j_req['username']
     password = j_req['password']
-    auth_id = "gc:"+username
+    auth_id = "gc:" + username
     try:
         user = User.get_by_auth_password(auth_id, password)
     except:
@@ -53,10 +50,10 @@ def auth(req):  # pragma: no cover
     # if we crate the response, then we need the cors stuff.
     # response = webapp2.Response(content_type='application/json', charset='UTF-8')
     # if created:
-    #     response.status = 201
+    # response.status = 201
     # cookie = GCAuth.get_secure_cookie(token)
     # response.set_cookie('gc_token', cookie, secure=False,
-                        # max_age=int(cfg.AUTH_TOKEN_MAX_AGE), domain="/")
+    # max_age=int(cfg.AUTH_TOKEN_MAX_AGE), domain="/")
     token = GCAuth.get_token(s_token)
     # resp.headers.update({
     #             'Access-Control-Allow-Origin': origin,
@@ -64,7 +61,6 @@ def auth(req):  # pragma: no cover
     # response.write(json.dumps(token))
     deferred.defer(sync_user, user, s_token)
     return token
-        
 
 
 @app.route("/%s/auth/<provider>/<token>" % APP_ADMIN, methods=('GET',))
@@ -106,33 +102,36 @@ def auth(req, provider, token):  # pragma: no cover
     created = False
     if not user:
         if provider == 'google':
-            created, user = User.create_user(auth_id, unique_properties=['email'],
-                                             name=d_user.get('name','unknown'),
+            created, user = User.create_user(auth_id, 
+                                            # unique_properties=['email'],
+                                             name=d_user.get('name', 'unknown'),
                                              nickname="",
-                                             gender=d_user.get('gender','unknown')[0],
-                                             picture=d_user.get('picture',None), 
-                                             avatar="", 
+                                             gender=d_user.get('gender', 'unknown')[0],
+                                             picture=d_user.get('picture', None),
+                                             avatar="",
                                              birthday=datetime.datetime.now(),
                                              country="",
                                              city="",
-                                             language=d_user.get('locale','en'), 
-                                             email=d_user.get('email','none@gymcentral.net'), 
+                                             language=d_user.get('locale', 'en'),
+                                             email=d_user.get('email', 'none@gymcentral.net'),
                                              phone="",
                                              active_club=None,
                                              owner_club=None,
                                              sensors=[])
         elif provider == 'facebook':
-            created, user = User.create_user(auth_id, unique_properties=['email'],
-                                                name=d_user.get('name','unknown'),
+            created, user = User.create_user(auth_id, 
+                                            # unique_properties=['email'],
+                                             name=d_user.get('name', 'unknown'),
                                              nickname="",
-                                             gender=d_user.get('gender','unknown')[0],
-                                             picture = "http://graph.facebook.com/%s/picture?type=large" % d_user.get('id',None),
-                                             avatar="", 
+                                             gender=d_user.get('gender', 'unknown')[0],
+                                             picture="http://graph.facebook.com/%s/picture?type=large" % d_user.get(
+                                                 'id', None),
+                                             avatar="",
                                              birthday=datetime.datetime.now(),
                                              country="",
                                              city="",
-                                             language=d_user.get('locale','en'), 
-                                             email=d_user.get('email','none@gymcentral.net'), 
+                                             language=d_user.get('locale', 'en'),
+                                             email=d_user.get('email', 'none@gymcentral.net'),
                                              phone="",
                                              active_club=None,
                                              owner_club=None,
@@ -145,15 +144,21 @@ def auth(req, provider, token):  # pragma: no cover
                     d_user, token, provider, user))
             raise AuthenticationError(
                 "Something is wrong with your account, these properties must be unique %s." % user)
+        else:
+            free_club = Club.query(Club.name == cfg.DEMO_CLUB).get()
+            if free_club:
+                courses = APIDB.get_club_courses(free_club)
+                for course in courses:
+                    APIDB.add_member_to_course(user, course, status="ACCEPTED")
 
     s_token = GCAuth.auth_user_token(user)
     # if we crate the response, then we need the cors stuff.
     # response = webapp2.Response(content_type='application/json', charset='UTF-8')
     # if created:
-    #     response.status = 201
+    # response.status = 201
     # cookie = GCAuth.get_secure_cookie(token)
     # response.set_cookie('gc_token', cookie, secure=False,
-                        # max_age=int(cfg.AUTH_TOKEN_MAX_AGE), domain="/")
+    # max_age=int(cfg.AUTH_TOKEN_MAX_AGE), domain="/")
     token = GCAuth.get_token(s_token)
     # resp.headers.update({
     #             'Access-Control-Allow-Origin': origin,
@@ -182,9 +187,6 @@ def delete_auth(req):  # pragma: no cover
         ndb.delete_multi(keys)
 
 
-
-
-
 # @app.route("/%s/init-db" % APP_ADMIN, methods=('GET',))
 # def init_db(req):  # pragma: no cover
 # # IGNORE
@@ -196,7 +198,7 @@ def delete_auth(req):  # pragma: no cover
 # picture='..', email='trainer@test.com', phone='2313213', active_club=None,
 # unique_properties=['email'])
 # club = Club.query(Club.name == "test").get()
-#     if not club:
+# if not club:
 #         club = APIDB.create_club(name="test", email="test@test.com", description="desc", url="example.com",
 #                                  training_type=["balance", "stability"], tags=["test", "trento"])
 #     logger.debug(club)

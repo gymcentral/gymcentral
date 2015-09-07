@@ -1,4 +1,5 @@
 import json
+import logging
 
 from google.appengine.ext.deferred import deferred
 
@@ -156,11 +157,12 @@ def trainee_club_list(req):
     ret = {}
     items = []
     for club in clubs:
-        j_club = club.to_dict()
-        j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
-        j_club['course_count'] = APIDB.get_club_courses(club, count_only=True)
-        j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['name', 'picture'])
-        items.append(j_club)
+        if not club.is_deleted:
+            j_club = club.to_dict()
+            j_club['member_count'] = APIDB.get_club_members(club, count_only=True)
+            j_club['course_count'] = APIDB.get_club_courses(club, count_only=True)
+            j_club['owners'] = sanitize_list(APIDB.get_club_owners(club), ['name', 'picture'])
+            items.append(j_club)
     ret['results'] = sanitize_list(items,
                                    ['id', 'name', 'description', 'url', 'creation_date', 'is_open', 'tags', 'owners',
                                     'member_count', 'course_count'])
@@ -406,6 +408,37 @@ def trainee_club_session_list(req, uskey_club):
                                                        'on_after', 'meta_data']))
     return dict(total=total, results=res_list)
 
+
+@app.route('/%s/clubs/<uskey_club>/sessions/ongoing' % APP_TRAINEE, methods=('GET',))
+@user_has_role(["MEMBER"])
+def trainee_club_session_list_ongoing(req, uskey_club):
+    """
+    ``GET`` @ |ta| +  ``/clubs/<uskey_course>/sessions``
+
+    List of the session of a club. |uroleM|
+    """
+    # TODO: test
+    club = req.model
+    # j_req = json_from_request(req)
+    # session_type = j_req['type']
+    sessions = APIDB.get_sessions_im_subscribed(req.user, club, paginated=False)
+
+    res_list = []
+    for session in sessions:
+        if session.status == "ONGOING":
+            res_obj = session.to_dict()
+            res_obj['status'] = session.status
+            res_obj['participated'] = APIDB.user_participated_in_session(req.user, session)
+            res_obj['participation_count'] = APIDB.user_participation_details(req.user, session, count_only=True)
+            res_obj['max_score'] = APIDB.session_completeness(req.user, session)
+            course = session.course.get()
+            res_obj['course_id'] = course.id
+            res_obj['course_name'] = course.name
+            # no edist here, since the data on the type are already removed
+            return sanitize_json(res_obj, hidden=['course', 'list_exercises', 'profile', 'activities', 'on_before',
+                                                  'on_after', 'meta_data'])
+    return dict()
+
     # Training session
 
 
@@ -468,12 +501,18 @@ def trainee_session_performance(req, uskey_session):
 
     Post the performance of the session
     """
-    participation = json_from_request(req, mandatory_props=['joinTime', 'leaveTime', 'completeness', 'indicators',
-                                                            'activityPerformances'])
+    participation = json_from_request(req, mandatory_props=['joinTime', 'leaveTime', 'indicators',
+                                                            'activityPerformances'], optional_props=['completeness'])
+    logging.debug("participation %s" % participation)
+    if 'completeness' not in participation or not participation['completeness']:
+        participation['completeness'] = 75
     performances = participation.pop('activity_performances')
     # check the data from here. probably the particaipation goes into the creation
     participation = APIDB.create_participation(req.user, req.model, **participation)
     for performance in performances:
+        logging.debug("participation %s" % performance)
+        if 'completeness' not in performance or not performance['completeness']:
+            performance['completeness'] = 75
         APIDB.create_performance(participation, performance['activityId'], performance['completeness'],
                                  performance['recordDate'], performance['indicators'])
     return HttpCreated()
@@ -495,7 +534,8 @@ def trainee_course_performances(req, uskey_course):
     sum = 0.0
     for session in sessions:
         participation = APIDB.get_participation(req.user, session)
-        sum += float(participation.max_completeness)
+        if participation:
+            sum += float(participation.max_completeness)
     return dict(score=sum / tot)
 
 

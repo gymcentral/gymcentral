@@ -493,7 +493,6 @@ class APIDB():
         """
         course = cls.model_course()
         course.club = club.key
-        print "Course %s" % args
         cls.__create(course, **args)
         return course
 
@@ -660,7 +659,8 @@ class APIDB():
         :param kwargs: usual kwargs
         :return: list of sessions
         """
-        sessions = cls.get_sessions(query_only=True).filter(cls.model_session.course == course.key)
+        sessions = cls.model_session.query(cls.model_session.canceled == False).filter(
+            cls.model_session.course == course.key).order(cls.model_session.start_date)
         if date_from:
             sessions = sessions.filter(cls.model_session.start_date >= date_from)
         if date_to:
@@ -676,7 +676,7 @@ class APIDB():
         # # in case there's no inequality, then we order
         # sessions.order(GCModel.created)
         # else:
-        # session.order(cls.model_session.start_date)
+        # sessions.order(cls.model_session.status)
         return cls.__get(sessions, **kwargs)
 
     @classmethod
@@ -752,7 +752,6 @@ class APIDB():
         if "on_after" in args:
             on_after = args.pop("on_after")
             args['on_after'] = [Key(urlsafe=i) for i in on_after]
-        print args
         cls.__create(session, **args)
         return session
 
@@ -767,7 +766,6 @@ class APIDB():
         """
         if "activities" in args:
             activities = args.pop("activities")
-            print activities
             session.list_exercises = [Key(urlsafe=a['id']) for a in activities]
 
         cls.__update(session, not_allowed=['course'], **args)
@@ -1167,7 +1165,15 @@ class APIDB():
         :param session: the session
         :return: the participations
         """
+        if 'count_only' in kwargs:
+            if kwargs['count_only']:
+                # group by user
+                return cls.__get(cls.model_participation.query(cls.model_participation.session == session.key,
+                                                               projection=[cls.model_participation.user],
+                                                               group_by=[cls.model_participation.user]),
+                                 count_only=True)
         return cls.__get(cls.model_participation.query(cls.model_participation.session == session.key), **kwargs)
+
 
     @classmethod
     def get_participation(cls, user, session, level=None):
@@ -1249,7 +1255,7 @@ class APIDB():
         :param indicators: list of indicators (id, value)
         :return: the performance object
         """
-        if isinstance(activity, (unicode,str)):
+        if isinstance(activity, (unicode, str)):
             activity_id = activity
         else:
             activity_id = activity.id
@@ -1282,7 +1288,7 @@ class APIDB():
         :return: Tuple -> Bool, User
         """
         if "increase_level" in values:
-            values['increase_level'] = bool(values['increase_level']) 
+            values['increase_level'] = bool(values['increase_level'])
         return cls.__update(subscription, not_allowed=not_allowed, **values)
 
     # [END] Subscriptions
@@ -1398,8 +1404,8 @@ class APIDB():
         model.put()
         return model
 
-    @staticmethod
-    def __update(model, not_allowed=None, **args):
+    @classmethod
+    def __update(cls, model, not_allowed=None, **args):
         """
         Updates a model
 
@@ -1412,20 +1418,26 @@ class APIDB():
         :param args: dict with parameters
         :return: Bool, and the updated model
         """
+
         not_allowed_ndb = ['id', 'key', 'namespace', 'parent']
         if not not_allowed: not_allowed = []
         not_allowed_ndb += not_allowed
         for key, value in args.iteritems():
             if key in not_allowed_ndb:
                 raise BadParameters(key)
-            if hasattr(model, key):
+            if not isinstance(model, cls.model_user):
+                if hasattr(model, key):
+                    try:
+                        setattr(model, key, value)
+                    except:
+                        raise BadParameters(key)
+                else:
+                    raise BadParameters("Not in the model %s " % key)
+            else:
                 try:
-                    print (' %s %s') % ( key, value)
                     setattr(model, key, value)
                 except:
-                    raise BadParameters(key)
-            else:
-                raise BadParameters("Not in the model %s " % key)
+                    raise ServerError("Strange, this is an expando model and the exception should never occour")
         model.put()
         return True, model
 
@@ -1602,8 +1614,8 @@ class APIDB():
             i = 0
             for item in res:
                 if item:
-                # this may be dangerous if the order is not the same, but it should not happen
-                # we check if the index is the same, which should be.
+                    # this may be dangerous if the order is not the same, but it should not happen
+                    # we check if the index is the same, which should be.
                     if getattr(relations[i], projection) == item.key:
                         setattr(item, merge, relations[i])
                         i += 1

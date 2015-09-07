@@ -118,6 +118,7 @@ class Course(GCModel):
                 self.profile = json.loads(self.profile)
             except Exception:
                 raise BadValueError("Profile must be a valid json")
+    
     # @property
     # def max_level(self):
     #     if not self.profile:
@@ -173,6 +174,9 @@ class Course(GCModel):
         if self.course_type == "PROGRAM":
             if not self.duration:
                 return False, "Entity has uninitialized properties: duration"
+        if not self.max_level:
+            if not self.profile:
+                return False, "Either 'maxLevel' or 'profile' must be set"
         return True
 
     def populate(self, **kwds):
@@ -407,9 +411,8 @@ class Session(GCModel):
         result['activities'] = self.get_exercises
         result['on_before'] = self.get_on_before
         result['on_after'] = self.get_on_after
-        result['max_level'] =  self.course.get().max_level
+        result['max_level'] =  self.max_level
         result['profile'] =  self.course.get().profile
-        print result
 
         del result['canceled']
         if self.session_type != "SINGLE":
@@ -529,7 +532,10 @@ class TimeData(GCModel):
     leave = ndb.DateTimeProperty()
 
     def set_js(self, prop, value):
-        setattr(self, prop, datetime.fromtimestamp(long(value) / 1000))
+        try:
+            setattr(self, prop, datetime.fromtimestamp(long(value) / 1000))
+        except:
+            setattr(self,prop, datetime.now())
 
     def to_dict(self):
         return dict(join=date_to_js_timestamp(self.join), leave=date_to_js_timestamp(self.leave))
