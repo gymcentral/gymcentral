@@ -817,7 +817,7 @@ def coach_club_activities_create(req, uskey_club):
     Creates an activity for a club. |uroleOT|
     """
     club = req.model
-
+    # TODO: add indicators here...
     j_req = json_from_request(req, mandatory_props=['name'], optional_props=['indicators'])
 
     activity = APIDB.create_activity(club, **j_req)
