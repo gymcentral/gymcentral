@@ -5,6 +5,12 @@
 
 Welcome to gymCentral's documentation!
 ======================================
+This is the gymcentral code that runs on AppEngine.
+
+For another documentation pls refer to `this documentation <https://docs.google.com/document/d/1vF8r__-Im5CCMKcTtzKrlTZ6Q6t3QGpSy9tGKFdQ1OU/>`_.
+
+For questions: `contact stefano <stefano.tranquillini@gmail.com>`_
+
 
 Contents:
 
@@ -14,7 +20,7 @@ Contents:
    docs/app
    docs/api
    docs/db_utils
-
+   docs/models
 
 
 

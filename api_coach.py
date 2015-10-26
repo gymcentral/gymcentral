@@ -38,18 +38,25 @@ def coach_profile(req):
 
     Profile of the current user |ul|
     """
+    # list of parameters for the output
     out = ['id', 'name', 'nickname', 'gender', 'picture', 'avatar', 'birthday', 'country', 'city', 'language',
            'email', 'phone',
            # 'memberships',
            'owner_club']
+    # if it's a detail
     if req.method == "GET":
+        # req.user is always mapped to the user that makes the request.
         j_user = req.user.to_dict()
-
+        # to add the memebrship
         # j_user['memberships'] = sanitize_list(APIDB.get_user_member_of_type(req.user, ['OWNER', 'TRAINER']),
         # ['id', 'name', 'description'])
+
+        # this set the owner_club field if the user is not owner of any club. Other
         if 'owner_club' not in j_user:
             j_user['owner_club'] = None
+        #  sanitize the result
         return sanitize_json(j_user, out, except_on_missing=False)
+    # if it's an update, probably better to split in two calls..
     elif req.method == "PUT":
         j_req = json_from_request(req, optional_props=['name', 'nickname', 'gender', 'picture', 'avatar', 'birthday',
                                                        'country', 'city', 'language',
@@ -87,6 +94,7 @@ def coach_club_list(req):
     size = int(j_req['size'])
     paginated = j_req['paginated'] == 'true'
 
+    # if paginated then use the pagination..
     if paginated:
         clubs, total = APIDB.get_user_owner_or_trainer_of(user, paginated=True, page=page, size=size)
     else:
@@ -704,7 +712,7 @@ def coach_course_subscription_details(req, uskey_subscription):
     """
     ``GET`` @ |ca| +  ``/subscriptions/<uskey_subscription>``
 
-    GET a subscription. |uroleO|
+    GET a subscription. |uroleOT|
     """
     subscription = req.model
     user = subscription.member.get()
@@ -734,7 +742,7 @@ def coach_course_subscription_update(req, uskey_subscription):
     """
     ``PUT`` @ |ca| +  ``/subscriptions/<uskey_subscription>``
 
-    Updates a subscription. |uroleO|
+    Updates a subscription. |uroleOT|
     """
     subscription = req.model
     j_req = json_from_request(req,
@@ -762,7 +770,7 @@ def coach_course_subscription_update_level(req, uskey_subscription):
     """
     ``PUT`` @ |ca| +  ``/subscriptions/<uskey_subscription>/level``
 
-    Updates the level of a subscription. |uroleO|
+    Updates the level of a subscription. |uroleOT|
     """
     subscription = req.model
     j_req = json_from_request(req, mandatory_props=['profileLevel'], optional_props=['increaseLevel'])
@@ -776,7 +784,7 @@ def coach_course_subscription_delete(req, uskey_subscription):
     """
     ``DELETE`` @ |ca| +  ``/subscriptions/<uskey_subscription>``
 
-    Deletes a subscription. |uroleO|
+    Deletes a subscription. |uroleOT|
     """
     subscription = req.model
     club = subscription.course.get().club.get()
@@ -1109,11 +1117,12 @@ def coach_room_create(req,uskey_club):
     """
     ``POST`` @ |ca| + ``/rooms``
 
-    Create a room.
+    Create a room. for Endrit
     """
     j_req = json_from_request(req, mandatory_props=["name", "roomType"], optional_props=['config'])
     room = APIDB.create_room(req.model, **j_req)
     return HttpCreated(room.to_dict())
+
 
 @app.route('/%s/rooms/<uskey_room>/events' % APP_COACH, methods=('POST',))
 @user_required
@@ -1121,7 +1130,7 @@ def coach_event_create(req,uskey_room):
     """
     ``POST`` @ |ca| + ``/%s/rooms/<uskey_room>/event``
 
-    Create an event for the room.
+    Create an event for the room. for Endrit
     """
     j_req = json_from_request(req, mandatory_props=["name", "eventType","startDate","endDate"], optional_props=['config'])
     j_req['start_date']=date_from_js_timestamp(j_req['start_date'])

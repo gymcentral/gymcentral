@@ -16,28 +16,27 @@ from google.appengine.api import search
 
 # TODO create a GCMOdel for the support table that automatically has the get/build id
 
-# logging.config.fileConfig('logging.conf')
-# logger = logging.getLogger('myLogger')
-
-
 class Version(ndb.Model):
+    # to keep the version of the current app. Iman idea.
     type = ndb.StringProperty(choices=['production', 'demo', 'test'])
     current = ndb.StringProperty(required=True)
 
 
 class Log(ndb.Model):
+    # Log of the app. Iman idea.
     data = ndb.JsonProperty()
     recorded = ndb.DateTimeProperty(auto_now=True)
 
 
 class User(GCUser):
+    # the user object, it's an expando class.
+
     # this to save writing ops. only email can be used.
     _default_indexed = False
 
     email = ndb.StringProperty(indexed=True, required=True, default="none@gymcentral.net")
 
-    # this is an expando class
-
+    # some handy queries already implemented.
     @property
     def member_of(self):
         return ClubMembership.query(ndb.AND(ClubMembership.member == self.key,
@@ -75,10 +74,7 @@ class User(GCUser):
             return membership.membership_type
         raise AuthenticationError("User is not connected to the Club")
 
-    # def _post_put_hook(self, future):
-    # # this is needed for the realtime API
-    # # deferred.defer(sync_user, self)
-
+    # to save time in rendering the user.
     def to_dict(self):
         d = super(User, self).to_dict()
         del d['updated']
@@ -98,6 +94,8 @@ class User(GCUser):
             ])
         index = search.Index(name="users")
         index.put(user_doc)
+        # this is needed for the realtime API, now is inside the model calls
+        # deferred.defer(sync_user, self)
 
 
 class Course(GCModel):

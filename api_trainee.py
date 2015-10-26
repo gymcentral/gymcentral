@@ -65,7 +65,7 @@ def version(req, mode):
 @app.route("/%s/logs" % APP_TRAINEE, methods=('POST', 'GET'))
 def logs(req):
     """
-    Cretates an entity in the log
+    Creates an entity in the log
 
     :param req:
     :return: 201, and the log object
@@ -89,6 +89,7 @@ def logs(req):
 def trainee_profile(req):
     """
     ``GET`` @ |ta| + ``/user/current``
+
     ``PUT`` @ |ta| +  ``/user/current``
 
     - Profile of the current user.
@@ -563,6 +564,13 @@ def search_user(req):
 @app.route("/%s/clubs/<uskey_club>/rooms" % APP_TRAINEE, methods=('GET',))
 @user_required
 def club_room_list(req, uskey_club):
+    """
+    Gets the list of rooms (for Endrit)
+
+    :param req:
+    :param uskey_club:
+    :return:
+    """
     club = req.model
     j_req = json_from_paginated_request(req)
     page = int(j_req['page'])
@@ -574,6 +582,13 @@ def club_room_list(req, uskey_club):
 @app.route("/%s/rooms/<uskey_room>" % APP_TRAINEE, methods=('GET',))
 @user_required
 def room_detail(req, uskey_room):
+    """
+    Gets the detail  of a room (for Endrit)
+
+    :param req:
+    :param uskey_club:
+    :return:
+    """
     room = req.model
     d_room = room.to_dict()
     events = APIDB.get_room_events(room)

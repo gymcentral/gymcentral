@@ -7,21 +7,21 @@ from gaebasepy.exceptions import AuthenticationError, NotFoundException
 from models import Club, ClubMembership, CourseSubscription, CourseTrainers, Course, Session, Exercise, Indicator, \
     Detail, Participation
 
-
 # this beacuse the decorator is needed to create the docs but not to run the project
 # http://stackoverflow.com/questions/3687046/python-sphinx-autodoc-and-decorated-members
-# try:
-# from decorator import decorator
-# except ImportError:
-# # No decorator package available. Create a no-op "decorator".
-#     def decorator(f):
-#         return f
+try:
+    from decorator import decorator
+except ImportError:
+    def decorator(f):
+        return f
+
+
 
 __author__ = 'stefano'
 
-# logging.config.fileConfig('logging.conf')
 logger = logging.getLogger('__name__')
 
+# NOTE: there's another auth in the submodule.
 
 def __club_role(user, club, roles):
     rel = ClubMembership.get_by_id(user, club)
@@ -35,28 +35,23 @@ def __club_role(user, club, roles):
 
 
 def __course_role(user, course, roles):
-    test_passed = False
     if "MEMBER" in roles:
         rel = CourseSubscription.get_by_id(user, course)
         if rel is None:
             raise AuthenticationError("user is not member of the course")
         if not rel.is_active:
             raise AuthenticationError("user is not ACTIVE member of the course")
-        test_passed = True
     elif "TRAINER" in roles:
         rel = CourseTrainers.get_by_id(user, course)
         if rel is None:
             raise AuthenticationError("user is not trainer of the course")
         if not rel.is_active:
             raise AuthenticationError("user is not ACTIVE trainer of the course")
-        test_passed = True
     elif "OWNER" in roles:
         # in case this rises and exception.
         __club_role(user, course.club, ['OWNER'])
-        test_passed = True
     else:
         raise AuthenticationError("Role (%s) is not permitted for course" % roles)
-
 
 
 def __club_membership_role(user, club, roles):
@@ -67,26 +62,32 @@ def __club_membership_role(user, club, roles):
 
 def user_has_role(roles):
     # this works only for gymcentral
-    # @decorator
+    @decorator
     def has_role_real(handler):
         """
         Checks if the user has the correct roles.
 
         """
-
         def wrapper(req, *args, **kwargs):
-            #
+            #if the req parameter has no user,
+            # thus if the user is not auth
             if not hasattr(req, 'user'):
+                # check if he may be auth
                 user = GCAuth.get_user(req)
                 if user is None:
+                    # if not error.
                     raise AuthenticationError
+                # else set
                 req.user = user
             if roles:
-                # check the object.
+                # check if the object exists, it's in req.model
                 if not hasattr(req, cfg.MODEL_NAME):
                     raise NotFoundException
+                # we get the obj
                 obj = getattr(req, cfg.MODEL_NAME)
-                # logger.debug("OBJ " + str(type(obj) is Club))
+
+                # depending on the type of object we check the permission
+                # each objec has its own rules for the roles.
                 if isinstance(obj, Club):
                     __club_role(req.user, obj, roles)
                 elif isinstance(obj, Course):

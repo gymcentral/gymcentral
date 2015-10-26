@@ -26,13 +26,19 @@ API Admin
 ---------
 .. automodule:: api_admin
     :members:
+    :undoc-members:
+    :private-members:
 
 API Coach
 ---------
 .. automodule:: api_coach
     :members:
+    :undoc-members:
+    :private-members:
 
 API Trainee
 -----------
 .. automodule:: api_trainee
     :members:
+    :undoc-members:
+    :private-members:

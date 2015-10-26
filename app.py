@@ -11,7 +11,6 @@ from gaebasepy.auth import GCAuth
 from gaebasepy.exceptions import NotFoundException, AuthenticationError
 from gaebasepy.gc_utils import camel_case
 from gaebasepy.http_codes import GCHttpCode
-import logging
 
 __author__ = 'Stefano Tranquillini <stefano.tranquillini@gmail.com>'
 
@@ -25,13 +24,23 @@ class GCApp(WSGIApp):
     @staticmethod
     def edit_request(router, request, response):  # pragma: no cover
         """
-        Automatically loads into ``request.model`` (``.model`` is set in ``cfg.MODEL_NAME``) the object reterived from
-        the parameter passed.
+        Automatically loads into the ``request.model`` (where the value of ``.model`` is set in ``cfg.MODEL_NAME``, in this deployent has the value `model`) the object retrieved from
+        the parameter passed if these two requirements are satisfied:.
 
         - The parameter **must** be a ``Key`` encoded as ``urlsafe``.
         - The name of the parameter encoded into the url **must** start with ``uskey`` (which stands for UrlSafeKEY)
 
         If the ``key`` does not exists it raises and exception.
+
+        example::
+
+            @app.route("/%s/hw/<uskey_obj>" % APP_ADMIN, methods=('GET', )) #method annotation, note the `uskey` param
+            def hw_par(req, uskey_obj):  #method def, `uskey` param
+                model = req.model #automatically mapped..
+
+        .. note::
+
+            similarly, `req.user` is set by the decorator `user_required` in the `auth.py` of the `gaebasepy` submodule
 
         :param router: the router
         :param request: the request
@@ -42,6 +51,7 @@ class GCApp(WSGIApp):
         # depending on the url...
         app_id = request.headers.get("X-App-Id")
         if "trainee" in request.url:
+            # NOTE: change the config with the value if you want to change them
             if not app_id in cfg.APPIDS_TRAINEE:
                 raise AuthenticationError("Your key %s is not valid" % app_id)
         elif "coach" in request.url:
@@ -65,7 +75,8 @@ class GCApp(WSGIApp):
                         except:
                             raise NotFoundException()
                     else:
-                        # it's current, so get current club or NOne
+                        # NOTE: api works also with the word `curren` as uskey parameter, in that case we do this trick to load the correct model.
+                        # crurent works only for club..
                         if key.endswith("club"):
                             user = GCAuth.get_user(request)
                             if not user.active_club:
@@ -80,7 +91,7 @@ class GCApp(WSGIApp):
     @staticmethod
     def edit_response(rv):
         """
-        Edits the response
+        Edits the response applying camel case
 
         :param rv: the response
         :return: the edited response
@@ -90,6 +101,7 @@ class GCApp(WSGIApp):
         else:
             rv = camel_case(rv)
         return rv
+
 
 # data
 # check the cfg file, it should not be uploaded!

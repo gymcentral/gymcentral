@@ -5,6 +5,8 @@ DB Utils Documentation.
 
 This is the explanation of the class created to manage the DB.
 
+The models are defined in `models.py`
+
 .. note::
 
     Most of the functions have ``**kwargs`` as final parameter. This because the functions usually calls
